@@ -18,13 +18,14 @@ implemented features:
 - simple texture transparency (each pixel can be either fully transparent or fully visible)
 - simple camera management (parametrised perspective, possibility to rotate and move the camera forward/backward etc.)
 - simple time measurement
+- terrain generation based on provided heightmap image
+- fog
 
 to-do:
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file)
-- terrain generation based on provided heightmap image
 - mouse input handling
 - LOD (multiple meshes being switched depending on the distance)
-- fog
+- possibility to turn off fog for specific objects
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)

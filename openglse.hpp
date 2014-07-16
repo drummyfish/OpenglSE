@@ -38,11 +38,14 @@ char shader_vertex[] =
 "uniform float specular_factor;    // material variable       \n"
 "uniform float specular_exponent;  // material variable       \n"
 "uniform uint render_mode;                                    \n"
+"uniform float fog_distance;                                  \n"
+"uniform float far_plane;          // far plane distance      \n"
 "                                                             \n"
 "out vec2 uv_coordination;                                    \n"
 "out float final_intensity;      // computed from lighting    \n"
 "out vec3 transformed_normal;    // normal after object transformation \n"
 "out vec3 transformed_position;                               \n"
+"out float fog_intensity;        // 0 = maximum fog           \n"
 "                                                             \n"
 "float diffuse_intensity;                                     \n"
 "float specular_intensity;                                    \n"
@@ -56,7 +59,12 @@ char shader_vertex[] =
 "  uv_coordination = texture_coordination;                                                             \n"
 "  transformed_normal = (world_matrix * vec4(normal, 0.0)).xyz;                                        \n"
 "                                                                                                      \n"
-"  if (render_mode == uint(0)) {                                                                             \n"
+"  if (fog_distance > 0) // fog enabled                                                                \n"
+"    fog_intensity = clamp((1.0 - gl_Position.z / far_plane) / (1.0 - fog_distance),0.0,1.0);          \n"
+"  else                                                                                                \n"
+"    fog_intensity = 1.0;                                                                              \n"
+"                                                                                                      \n"
+"  if (render_mode == uint(0)) {                                                                       \n"
 "    diffuse_intensity = 1.0;                                                                          \n"
 "    specular_intensity = 1.0; }                                                                       \n"
 "  else {                                                                                              \n"
@@ -75,6 +83,7 @@ char shader_fragment[] =
 "in vec3 transformed_normal;                                  \n"
 "in vec3 transformed_position;                                \n"
 "out vec4 FragColor;                                          \n"
+"in float fog_intensity;         // 0 = maximum fog           \n"
 "                                                             \n"
 "uniform sampler2D texture_unit;                              \n"
 "uniform bool use_texture;         // whether to use texture or just color \n"
@@ -89,6 +98,8 @@ char shader_fragment[] =
 "uniform vec3 transparent_color;                              \n"
 "uniform bool transparency_enabled;                           \n"
 "uniform uint render_mode;                                    \n"
+"uniform float fog_distance;                                  \n"
+"uniform vec3 background_color;  // viewport background color \n"
 "                                                             \n"
 "vec3 transparent_color_difference;   // helper variable      \n"
 "vec3 reflection_vector;                                      \n"
@@ -104,12 +115,12 @@ char shader_fragment[] =
 "  else                                                       \n"
 "    FragColor = vec4(mesh_color,1.0);                        \n"
 "                                                             \n"
-"  if (render_mode == uint(2)) {                                    \n"
+"  if (render_mode == uint(2)) {                                                                               \n"
 "    diffuse_intensity = clamp(dot(normalize(transformed_normal),-1 * light_direction),0.0,1.0);               \n"
-"    reflection_vector = normalize(reflect(light_direction,transformed_normal));                                      \n"
-"    direction_to_camera = normalize(camera_position - transformed_position);                                         \n"
-"    specular_intensity = clamp(dot(direction_to_camera,reflection_vector),0.0,1.0);    \n"
-"    specular_intensity = clamp(pow(specular_intensity,specular_exponent),0.0,1.0);                    \n"
+"    reflection_vector = normalize(reflect(light_direction,transformed_normal));                               \n"
+"    direction_to_camera = normalize(camera_position - transformed_position);                                  \n"
+"    specular_intensity = clamp(dot(direction_to_camera,reflection_vector),0.0,1.0);                           \n"
+"    specular_intensity = clamp(pow(specular_intensity,specular_exponent),0.0,1.0);                            \n"
 "    helper_intensity = ambient_factor + diffuse_factor * diffuse_intensity + specular_factor * specular_intensity; } \n"
 "  else                                                       \n"
 "    helper_intensity = final_intensity;                      \n"
@@ -118,12 +129,13 @@ char shader_fragment[] =
 "                                                             \n"
 "  if (transparency_enabled) {                                \n"
 "    transparent_color_difference = FragColor.xyz - transparent_color; \n"
-"                                                             \n"
-"    if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordination        \n"
+"                                                                      \n"
+"    if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordination \n"
 "      gl_FragDepth = 1.1;     // transparent color           \n"
 "    }                                                        \n"
 "                                                             \n"
-"  FragColor = FragColor * vec4(helper_intensity,helper_intensity,helper_intensity,1.0) * vec4(light_color,1.0);         \n"
+"  FragColor = FragColor * vec4(helper_intensity,helper_intensity,helper_intensity,1.0) * vec4(light_color,1.0); \n"
+"  FragColor = mix(vec4(background_color,1.0),FragColor,fog_intensity); // apply fog \n"
 "}                                                            \n";
 
 typedef enum       /// special key codes
@@ -805,11 +817,20 @@ void handle_camera();
 
 void set_background_color(unsigned char red, unsigned char green, unsigned char blue);
   /**<
-   Sets the background color for the viewport.
+   Sets the background (and fog) color for the viewport.
 
    @param red amount of red
    @param green amount of green
    @param blue amount of blue
+   */
+
+void set_fog(float distance);
+  /**<
+   Sets the fog distance. The fog color is determined by the background
+   color.
+
+   @param distance distance of the fog measured from the far plane,
+          negative value or zero turns the fog off
    */
 
 // global variables:
@@ -819,6 +840,7 @@ void (*user_render_function)(void) = NULL;                         /// pointer t
 void (*user_keyboard_function)(int key, int x, int y) = NULL;      /// pointer to user specified keypress function
 void (*user_advanced_keyboard_function)(bool key_up, int key, int x, int y) = NULL;
 float global_fov, global_near, global_far;                         /// perspective parameters
+float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
 
 unsigned char global_background_color[3];                          /// background color of the viewport
 bool global_keyboard_state[512];                                   /// keeps the keyboard state (each ASCII character + special keys) for the advanced keyboard function
@@ -843,6 +865,9 @@ GLuint specular_exponent_location;
 GLuint transparent_color_location;
 GLuint transparency_enabled_location;
 GLuint render_mode_location;
+GLuint fog_distance_location;
+GLuint far_plane_location;
+GLuint background_color_location;
 
 struct camera_struct                                                            /// represents a camera
 {
@@ -1363,6 +1388,9 @@ bool compile_shaders()
   transparent_color_location = glGetUniformLocation(shader_program,"transparent_color");
   transparency_enabled_location = glGetUniformLocation(shader_program,"transparency_enabled");
   render_mode_location = glGetUniformLocation(shader_program,"render_mode");
+  fog_distance_location = glGetUniformLocation(shader_program,"fog_distance");
+  far_plane_location = glGetUniformLocation(shader_program,"far_plane");
+  background_color_location = glGetUniformLocation(shader_program,"background_color");
 
   return true;
 }
@@ -2512,6 +2540,9 @@ void set_perspective(float fov_degrees, float near_plane, float far_plane)
 
   make_perspective_matrix(fov_degrees,near_plane,far_plane,matrix);
   glUniformMatrix4fv(perspective_matrix_location,1,GL_TRUE,(const GLfloat *)matrix);
+  glUniform1f(far_plane_location,(GLfloat) far_plane);
+
+  set_fog(global_fog_distance);        // fog uniform must be also updated
 }
 
 //----------------------------------------------------------------------
@@ -2721,6 +2752,18 @@ void texture_2d::set_pixel(int x, int y, unsigned char red, unsigned char green,
 
 //----------------------------------------------------------------------
 
+void set_fog(float distance)
+
+{
+  float fog_distance_for_shader;   // distance from the viewer and normalized
+  global_fog_distance = distance;
+  fog_distance_for_shader = (global_far - distance) / global_far;
+
+  glUniform1f(fog_distance_location,(GLfloat) fog_distance_for_shader);
+}
+
+//----------------------------------------------------------------------
+
 unsigned int mesh_3d::vertex_count()
 
 {
@@ -2858,10 +2901,19 @@ void mesh_3d::print_data()
 void set_background_color(unsigned char red, unsigned char green, unsigned char blue)
 
 {
+  float helper_array[3];
+
   global_background_color[0] = red;
   global_background_color[1] = green;
   global_background_color[2] = blue;
-  glClearColor(red / 255.0,green / 255.0,blue / 255.0,0.0);
+
+  helper_array[0] = red / 255.0;
+  helper_array[1] = green / 255.0;
+  helper_array[2] = blue / 255.0;
+
+  glUniform3fv(background_color_location,1,(const GLfloat *) helper_array);
+
+  glClearColor(helper_array[0],helper_array[1],helper_array[2],1.0);
 }
 
 //----------------------------------------------------------------------
@@ -3019,6 +3071,7 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   light_direction.z = 1;
 
   set_global_light(light_direction,255,255,255);
+  set_background_color(0,0,0);
 
   unsigned int i;
 
