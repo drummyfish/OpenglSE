@@ -522,7 +522,7 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param point in this variable the object scale will be returned;
         */
 
-      float get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1);
+      void get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1);
         /**<
          Returns the model bounding box (in model space).
 
@@ -1859,7 +1859,7 @@ mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int res
 {
   mesh_3d *result;
   float matrix[4][4];
-  unsigned int i,j,index;
+  unsigned int i,index;
   unsigned char r,g,b;
   int x,y;
   int indexes[4];
@@ -1965,7 +1965,6 @@ mesh_3d *make_sphere(float radius, unsigned int height_segments, unsigned int si
 
 {
   mesh_3d *result = new mesh_3d;
-  float rotation_matrix[4][4];
 
   result->add_vertex(0,-1 * radius,0,0.5,0.5,0,-1,0);  // bottom vertex
   result->add_vertex(0,radius,0,0.5,0.5,0,1,0);        // top vertex
@@ -2084,8 +2083,6 @@ void mesh_3d::apply_matrix(float matrix[4][4])
 
 {
   unsigned int i;
-  point_3d point;
-  float x,y,z,n_x,n_y,n_z;
   float helper_vector[4],result_vector[4];
 
   for (i = 0; i < this->vertices.size(); i++)
@@ -2186,7 +2183,7 @@ bool texture_2d::load_ppm(string filename)
 
   // image size:
 
-  if (fscanf(file_handle,"%d %d",&this->width,&this->height) != 2)
+  if (fscanf(file_handle,"%d %d",(int *) &this->width,(int *) &this->height) != 2)
     {
       fclose(file_handle);
       return false;
@@ -2756,10 +2753,6 @@ void camera_struct::handle_fps()
   else if (global_keyboard_state[camera.key_go_down])
     this->go(DIRECTION_DOWN,distance_to_go);
 
-  bool limit_x_rotation = true;        /// this disallows camera handling function to rotate around x more than allowed (maximum and minimum angle)
-  float maximum_x_angle = 90;
-  float minimum_x_angle = -90;
-
   if (global_keyboard_state[camera.key_rotate_x_cw])
     this->rotate(-1 *angle_to_rotate,0,0);
   else if (global_keyboard_state[camera.key_rotate_x_ccw])
@@ -2864,7 +2857,7 @@ void texture_2d::set_pixel(int x, int y, unsigned char red, unsigned char green,
 {
   unsigned int index;
 
-  if (x < 0 || x >= this->width || y < 0 || y >= this->height)
+  if (x < 0 || x >= (int) this->width || y < 0 || y >= (int) this->height)
     return;
 
   index = this->xy_to_linear(x,y);
@@ -2912,7 +2905,7 @@ void texture_2d::get_pixel(int x, int y, unsigned char *red, unsigned char *gree
 {
   unsigned int index;
 
-  if (x < 0 || x >= this->width || y < 0 || y >= this->height)
+  if (x < 0 || x >= (int) this->width || y < 0 || y >= (int) this->height)
     {
       *red = 0;
       *green = 0;
@@ -2963,7 +2956,7 @@ void camera_struct::set_skybox(mesh_3d *what)
 
 //----------------------------------------------------------------------
 
-float mesh_3d::get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1)
+void mesh_3d::get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1)
 
 {
   unsigned int i;
@@ -3074,8 +3067,6 @@ void mesh_3d::add_vertex(float x, float y, float z, float texture_u, float textu
   normalize_vector(&vertex.normal);
 
   this->vertices.push_back(vertex);
-
-  int i;
 }
 
 //----------------------------------------------------------------------
