@@ -6,7 +6,7 @@ implemented features:
 - advanced input handling (keyboard up and down events)
 - possibility to automatically generate mesh normals
 - 3D triangle mesh rendering, supports normals and texture coordinates for each vertex
-- per-mesh rendering modes: no shading, Goraud (per-vertex) shading, Phong (per-pixel) shading, wireframe
+- per-mesh rendering modes: no shading (good for skyboxes etc.), Goraud (per-vertex) shading, Phong (per-pixel) shading, wireframe
 - basic ligting (one global directional light)
 - simple material variables (have impact on lighting of the mesh)
 - basic primitive generating: box, sphere, plane, cyllinder, cone
@@ -20,12 +20,15 @@ implemented features:
 - simple time measurement
 - terrain generation based on provided heightmap image
 - fog
+- basic automatic texture mapping
+- skybox support
+- possibility to turn off fog for specific objects (e.g. sky box)
 
 to-do:
+- very simple shadows (dark blobs underneath objects)
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file)
 - mouse input handling
 - LOD (multiple meshes being switched depending on the distance)
-- possibility to turn off fog for specific objects
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)

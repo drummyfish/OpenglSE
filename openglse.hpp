@@ -60,7 +60,7 @@ char shader_vertex[] =
 "  transformed_normal = (world_matrix * vec4(normal, 0.0)).xyz;                                        \n"
 "                                                                                                      \n"
 "  if (fog_distance > 0) // fog enabled                                                                \n"
-"    fog_intensity = clamp((1.0 - gl_Position.z / far_plane) / (1.0 - fog_distance),0.0,1.0);          \n"
+"    fog_intensity = clamp(pow((1.0 - gl_Position.z / far_plane) / (1.0 - fog_distance),2),0.0,1.0);   \n"
 "  else                                                                                                \n"
 "    fog_intensity = 1.0;                                                                              \n"
 "                                                                                                      \n"
@@ -100,6 +100,7 @@ char shader_fragment[] =
 "uniform uint render_mode;                                    \n"
 "uniform float fog_distance;                                  \n"
 "uniform vec3 background_color;  // viewport background color \n"
+"uniform bool use_fog;                                        \n"
 "                                                             \n"
 "vec3 transparent_color_difference;   // helper variable      \n"
 "vec3 reflection_vector;                                      \n"
@@ -135,7 +136,9 @@ char shader_fragment[] =
 "    }                                                        \n"
 "                                                             \n"
 "  FragColor = FragColor * vec4(helper_intensity,helper_intensity,helper_intensity,1.0) * vec4(light_color,1.0); \n"
-"  FragColor = mix(vec4(background_color,1.0),FragColor,fog_intensity); // apply fog \n"
+"                                                             \n"
+"  if (use_fog)                                               \n"
+"    FragColor = mix(vec4(background_color,1.0),FragColor,fog_intensity); // apply fog \n"
 "}                                                            \n";
 
 typedef enum       /// special key codes
@@ -340,6 +343,7 @@ class mesh_3d      /// a 3D mesh made of triangles
       point_3d position;
       point_3d rotation;   /// the object's rotation in angles, x, y and z are roll, pitch and yaw
       point_3d scale;
+      bool use_fog;
       texture_2d *texture; /// the texture associated with the mesh
       unsigned int color[3];   /// RGB mesh color that's used when the mesh doesn't have any texture
       float color_float[3];    /// mesh RGB color in range <0,1>
@@ -397,6 +401,15 @@ class mesh_3d      /// a 3D mesh made of triangles
          the other way).
          */
 
+      void set_use_fog(bool enable);
+        /**<
+         Sets whether the mesh should be affected by fog (if it's turned
+         on) when being rendered;
+
+         @param enable if true, the mesh will be affected by fog,
+                otherwise not
+         */
+
       unsigned int vertex_count();
         /**<
          Gets the mesh vertex count.
@@ -433,11 +446,13 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param blue amount of blue
          */
 
-      void texture_map_plane(axis_direction direction);
+      void texture_map_plane(axis_direction direction, float plane_width, float plane_height);
         /**<
          Maps the texture coordinations of the vertices using planar mapping.
 
          @param direction direction of the plane normal
+         @param plane_width width of the plane
+         @param plena_height height of the plane
          */
 
       void set_lighting_properties(float ambient, float diffuse, float specular, float specular_exponent);
@@ -643,74 +658,6 @@ int get_time();
    @return number of millisecends since the init function has been called
    */
 
-void get_camera_direction(point_3d *direction);
-  /**<
-   Gets the camera direction vector;
-
-   @param direction in this variable the unit camera direction vector
-          will be returned
-   */
-
-void move_camera(float dx, float dy, float dz);
-  /**<
-   Moves the camera relatively to its current position.
-
-   @param dx by how much to move the camera in x
-   @param dy by how much to move the camera in y
-   @param dz by how much to move the camera in z
-   */
-
-void camera_rotate(float dx_angles, float dy_angles, float dz_angles);
-  /**<
-   Rotates the camera relatively to its current rotation.
-
-   @param dx_angles by how many angles to rotate the camera around x
-   @param dy_angles by how many angles to rotate the camera around y
-   @param dz_angles by how many angles to rotate the camera around z
-   */
-
-void set_camera_position(float x, float y, float z);
-  /**<
-   Sets the camera position to given point.
-
-   @param x new camera x
-   @param y new camera y
-   @param z new camera z
-  */
-
-void set_camera_rotation(float x, float y, float z);
-  /**<
-   Sets the camera rotation to given point.
-
-   @param x new camera rotation around x
-   @param y new camera rotation around y
-   @param z new camera rotation around z
-  */
-
-void get_camera_position(point_3d *position);
-  /**<
-   Gets the current camera position.
-
-   @param position in this variable the camera position will be returned
-  */
-
-void get_camera_rotation(point_3d *rotation);
-  /**<
-   Gets the current camera rotation.
-
-   @param rotation in this variable the camera rotation in degrees will
-          be returned
-  */
-
-void camera_go(axis_direction direction, float distance);
-  /**<
-   Moves the camera in direction depending on its rotation.
-
-   @param direction direction in which the camera will move from its
-          perspective
-   @param distance how far the camera should go
-   */
-
 void normalize_vector(point_3d *vector);
   /**<
    Normalizes given vector (so that it's size is equal to 1).
@@ -736,6 +683,18 @@ float vector_length(point_3d vector);
 mesh_3d *make_cuboid(float side_x, float side_y, float side_z);
   /**<
    Makes a cuboid (box) mesh.
+
+   @param side_x length of the x side
+   @param side_y length of the y side
+   @param side_z length of the z side
+   @return instance of the cuboid mesh
+   */
+
+mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z);
+  /**<
+   Makes sharp-edged cuboid (box) mesh. It consists of 6 faces that don't
+   share vertices, so that the edges can be sharp and can have independent
+   texture mapping, which is especially good for skyboxes etc.
 
    @param side_x length of the x side
    @param side_y length of the y side
@@ -808,13 +767,6 @@ void set_global_light(point_3d direction, unsigned char red, unsigned char green
    @param blue amount of blue in the light intensity
    */
 
-void handle_camera();
-  /**<
-   Handles the camera depending on the current keyboard state and camera
-   settings (speed, key mapping etc.). This is intended to be called inside
-   the render function and only if advanced keyboard function is registered.
-   */
-
 void set_background_color(unsigned char red, unsigned char green, unsigned char blue);
   /**<
    Sets the background (and fog) color for the viewport.
@@ -866,6 +818,7 @@ GLuint transparent_color_location;
 GLuint transparency_enabled_location;
 GLuint render_mode_location;
 GLuint fog_distance_location;
+GLuint use_fog_location;
 GLuint far_plane_location;
 GLuint background_color_location;
 
@@ -873,9 +826,10 @@ struct camera_struct                                                            
 {
   point_3d position;                   /// camera position
   point_3d rotation;                   /// camera rotation (around x, y and z axis in degrees)
-  point_3d direction_forward_vector;           /// camera direction (forward) vector
+  point_3d direction_forward_vector;   /// camera direction (forward) vector
   point_3d direction_left_vector;
   point_3d direction_up_vector;
+  mesh_3d *skybox = NULL;              /// skybox, follows the camera movement (but not its rotation)
 
   float translation_matrix[4][4];
   float rotation_matrix[4][4];
@@ -897,6 +851,92 @@ struct camera_struct                                                            
   int key_rotate_x_ccw = 's';
   int key_rotate_z_cw = 'y';
   int key_rotate_z_ccw = 'x';
+
+  void set_position(float x, float y, float z);
+
+    /**<
+     Sets the camera position to given point.
+
+     @param x new camera x
+     @param y new camera y
+     @param z new camera z
+    */
+
+  void get_direction(point_3d *direction);
+    /**<
+     Gets the camera direction vector;
+
+     @param direction in this variable the unit camera direction vector
+            will be returned
+     */
+
+  void set_skybox(mesh_3d *what);
+    /**<
+     Sets a skybox, which will follow the camera movement (but not its
+     rotation).
+
+     @param what skybox to be set
+     */
+
+  void handle_fps();
+    /**<
+     Handles the camera depending on the current keyboard state and camera
+     settings (speed, key mapping etc.). This is intended to be called inside
+     the render function and only if advanced keyboard function is registered.
+     The camera behaves the same way as in FPS.
+     */
+
+  void move(float dx, float dy, float dz);
+    /**<
+     Moves the camera relatively to its current position.
+
+     @param dx by how much to move the camera in x
+     @param dy by how much to move the camera in y
+     @param dz by how much to move the camera in z
+     */
+
+  void rotate(float dx_angles, float dy_angles, float dz_angles);
+    /**<
+     Rotates the camera relatively to its current rotation.
+
+     @param dx_angles by how many angles to rotate the camera around x
+     @param dy_angles by how many angles to rotate the camera around y
+     @param dz_angles by how many angles to rotate the camera around z
+     */
+
+  void set_rotation(float x, float y, float z);
+    /**<
+     Sets the camera rotation to given point.
+
+     @param x new camera rotation around x
+     @param y new camera rotation around y
+     @param z new camera rotation around z
+    */
+
+  void get_position(point_3d *position);
+    /**<
+     Gets the current camera position.
+
+     @param position in this variable the camera position will be returned
+    */
+
+  void get_rotation(point_3d *rotation);
+    /**<
+     Gets the current camera rotation.
+
+     @param rotation in this variable the camera rotation in degrees will
+          be returned
+    */
+
+  void go(axis_direction direction, float distance);
+    /**<
+     Moves the camera in direction depending on its rotation.
+
+     @param direction direction in which the camera will move from its
+            perspective
+     @param distance how far the camera should go
+     */
+
 } camera;
 
 //======================================================================
@@ -1391,6 +1431,7 @@ bool compile_shaders()
   fog_distance_location = glGetUniformLocation(shader_program,"fog_distance");
   far_plane_location = glGetUniformLocation(shader_program,"far_plane");
   background_color_location = glGetUniformLocation(shader_program,"background_color");
+  use_fog_location = glGetUniformLocation(shader_program,"use_fog");
 
   return true;
 }
@@ -1541,46 +1582,40 @@ void set_global_light(point_3d direction, unsigned char red, unsigned char green
 
 //----------------------------------------------------------------------
 
-void camera_go(axis_direction direction, float distance)
+void camera_struct::go(axis_direction direction, float distance)
 
 {
   switch (direction)
     {
       case DIRECTION_FORWARD:
-        move_camera(camera.direction_forward_vector.x * distance,
-                    camera.direction_forward_vector.y * distance,
-                    camera.direction_forward_vector.z * distance);
+        this->move(camera.direction_forward_vector.x * distance,
+                   camera.direction_forward_vector.y * distance,
+                   camera.direction_forward_vector.z * distance);
         break;
 
       case DIRECTION_BACKWARD:
-        move_camera(camera.direction_forward_vector.x * distance * -1,
-                    camera.direction_forward_vector.y * distance * -1,
-                    camera.direction_forward_vector.z * distance * -1);
+        this->go(DIRECTION_FORWARD,-1 * distance);
         break;
 
       case DIRECTION_LEFT:
-        move_camera(camera.direction_left_vector.x * distance,
-                    camera.direction_left_vector.y * distance,
-                    camera.direction_left_vector.z * distance);
+        this->move(camera.direction_left_vector.x * distance,
+                   camera.direction_left_vector.y * distance,
+                   camera.direction_left_vector.z * distance);
         break;
 
       case DIRECTION_RIGHT:
-        move_camera(camera.direction_left_vector.x * distance * -1,
-                    camera.direction_left_vector.y * distance * -1,
-                    camera.direction_left_vector.z * distance * -1);
+        this->go(DIRECTION_LEFT,-1 * distance);
         break;
 
 
       case DIRECTION_UP:
-        move_camera(camera.direction_up_vector.x * distance,
-                    camera.direction_up_vector.y * distance,
-                    camera.direction_up_vector.z * distance);
+        this->move(camera.direction_up_vector.x * distance,
+                   camera.direction_up_vector.y * distance,
+                   camera.direction_up_vector.z * distance);
         break;
 
       case DIRECTION_DOWN:
-        move_camera(camera.direction_up_vector.x * distance * -1,
-                    camera.direction_up_vector.y * distance * -1,
-                    camera.direction_up_vector.z * distance * -1);
+        this->go(DIRECTION_UP,-1 * distance);
         break;
 
       default:
@@ -1686,6 +1721,79 @@ mesh_3d *make_cuboid(float side_x, float side_y, float side_z)
   result->add_triangle(6,3,7);
   result->add_triangle(1,0,4);
   result->add_triangle(5,1,4);
+
+  result->update();
+
+  return result;
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z)
+
+{
+  mesh_3d *result = new mesh_3d;
+
+  double half_x, half_y, half_z;
+
+  half_x = side_x / 2.0;
+  half_y = side_y / 2.0;
+  half_z = side_z / 2.0;
+
+              //     x           y           z             u    v      normal   #
+  // back:
+  result->add_vertex(-1 * half_x,-1 * half_y,half_z,       0.75, 0.5,0,  0,-1);  // 0
+  result->add_vertex(half_x,     -1 * half_y,half_z,       0.5,0.5,  0,  0,-1);  // 1
+  result->add_vertex(-1 * half_x,half_y,     half_z,       0.75, 0,  0,  0,-1);  // 2
+  result->add_vertex(half_x,     half_y,     half_z,       0.5,0,    0,  0,-1);  // 3
+
+  result->add_triangle(0,1,2);
+  result->add_triangle(1,3,2);
+
+  // front:
+  result->add_vertex(-1 * half_x,-1 * half_y,-1 * half_z,  0,   0.5, 0, 0, 1);  // 4
+  result->add_vertex(half_x,     -1 * half_y,-1 * half_z,  0.25,0.5, 0, 0, 1);  // 5
+  result->add_vertex(-1 * half_x,half_y,     -1 * half_z,  0,   0,   0, 0, 1);  // 6
+  result->add_vertex(half_x,     half_y,     -1 * half_z,  0.25,0,   0, 0, 1);  // 7
+
+  result->add_triangle(5,4,6);
+  result->add_triangle(6,7,5);
+
+  // left:
+  result->add_vertex(-1 * half_x,-1 * half_y,-1 * half_z,  1,   0.5,-1, 0, 0);  // 8
+  result->add_vertex(-1 * half_x,-1 * half_y,half_z,       0.75,0.5,-1, 0, 0);  // 9
+  result->add_vertex(-1 * half_x,half_y,     -1 * half_z,  1,   0  ,-1, 0, 0);  // 10
+  result->add_vertex(-1 * half_x,half_y,          half_z,  0.75,0,  -1, 0, 0);  // 11
+
+  result->add_triangle(8,9,10);
+  result->add_triangle(11,10,9);
+
+  // right:
+  result->add_vertex(half_x,    -1 * half_y,-1 * half_z,   0.25,0.5, 1, 0, 0);  // 12
+  result->add_vertex(half_x,    -1 * half_y,half_z,        0.5, 0.5, 1, 0, 0);  // 13
+  result->add_vertex(half_x,     half_y,     -1 * half_z,  0.25,0,   1, 0, 0);  // 14
+  result->add_vertex(half_x,     half_y,          half_z,  0.5, 0,   1, 0, 0);  // 15
+
+  result->add_triangle(12,14,13);
+  result->add_triangle(15,13,14);
+
+  // top:
+  result->add_vertex(-1 * half_x,half_y,    -1 * half_z,   0,   1,   0, 1, 0);  // 16
+  result->add_vertex(half_x,     half_y,    -1 * half_z,   0.25,1,   0, 1, 0);  // 17
+  result->add_vertex(-1 * half_x,half_y,         half_z,   0,   0.5, 0, 1, 0);  // 18
+  result->add_vertex(half_x,     half_y,         half_z,   0.25,0.5, 0, 1, 0);  // 19
+
+  result->add_triangle(18,17,16);
+  result->add_triangle(18,19,17);
+
+  // bottom:
+  result->add_vertex(-1 * half_x,-1 * half_y,-1 * half_z,  0.25,0.5, 0,-1, 0);  // 20
+  result->add_vertex(half_x,     -1 * half_y,-1 * half_z,  0.5, 0.5, 0,-1, 0);  // 21
+  result->add_vertex(-1 * half_x,-1 * half_y,     half_z,  0.25,1,   0,-1, 0);  // 22
+  result->add_vertex(half_x,     -1 * half_y,     half_z,  0.5, 1,   0,-1, 0);  // 23
+
+  result->add_triangle(22,20,21);
+  result->add_triangle(23,22,21);
 
   result->update();
 
@@ -1801,7 +1909,8 @@ mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int res
         result->vertices[i].position.y += r / 255.0 * height;
       }
 
-  result->texture_map_plane(DIRECTION_DOWN);
+  result->texture_map_plane(DIRECTION_DOWN,1.0,1.0);
+  result->smooth_normals();
 
   result->update();
 
@@ -2240,12 +2349,15 @@ bool mesh_3d::load_obj(string filename)
 
 //----------------------------------------------------------------------
 
-void set_camera_position(float x, float y, float z)
+void camera_struct::set_position(float x, float y, float z)
 
 {
-  camera.position.x = x;
-  camera.position.y = y;
-  camera.position.z = z;
+  if (this->skybox != NULL)
+    skybox->set_position(x,y,z);
+
+  this->position.x = x;
+  this->position.y = y;
+  this->position.z = z;
 
   make_translation_matrix(-1 * x,-1 * y,-1 * z,camera.translation_matrix);
 
@@ -2256,44 +2368,44 @@ void set_camera_position(float x, float y, float z)
 
 //----------------------------------------------------------------------
 
-void move_camera(float dx, float dy, float dz)
+void camera_struct::move(float dx, float dy, float dz)
 
 {
   point_3d current_position;
 
-  get_camera_position(&current_position);
-  set_camera_position(current_position.x + dx,current_position.y + dy,current_position.z + dz);
+  this->get_position(&current_position);
+  this->set_position(current_position.x + dx,current_position.y + dy,current_position.z + dz);
 }
 
 //----------------------------------------------------------------------
 
-void camera_rotate(float dx_angles, float dy_angles, float dz_angles)
+void camera_struct::rotate(float dx_angles, float dy_angles, float dz_angles)
 
 {
   point_3d current_rotation;
 
-  get_camera_rotation(&current_rotation);
-  set_camera_rotation(current_rotation.x + dx_angles,current_rotation.y + dy_angles,current_rotation.z + dz_angles);
+  this->get_rotation(&current_rotation);
+  this->set_rotation(current_rotation.x + dx_angles,current_rotation.y + dy_angles,current_rotation.z + dz_angles);
 }
 
 //----------------------------------------------------------------------
 
-void get_camera_direction(point_3d *direction)
+void camera_struct::get_direction(point_3d *direction)
 
 {
-  direction->x = camera.direction_forward_vector.x;
-  direction->y = camera.direction_forward_vector.y;
-  direction->z = camera.direction_forward_vector.z;
+  direction->x = this->direction_forward_vector.x;
+  direction->y = this->direction_forward_vector.y;
+  direction->z = this->direction_forward_vector.z;
 }
 
 //----------------------------------------------------------------------
 
-void set_camera_rotation(float x, float y, float z)
+void camera_struct::set_rotation(float x, float y, float z)
 
 {
-  camera.rotation.x = angle_to_0_360(x);
-  camera.rotation.y = angle_to_0_360(y);
-  camera.rotation.z = angle_to_0_360(z);
+  this->rotation.x = angle_to_0_360(x);
+  this->rotation.y = angle_to_0_360(y);
+  this->rotation.z = angle_to_0_360(z);
 
   make_rotation_matrix(camera.rotation.x,camera.rotation.y,camera.rotation.z,ROTATION_YXZ,camera.rotation_matrix);
   update_view_matrix();
@@ -2311,9 +2423,9 @@ void set_camera_rotation(float x, float y, float z)
 
   multiply_vector_matrix(helper_vector,vector_rotation_matrix,result_vector);
 
-  camera.direction_forward_vector.x = result_vector[0];
-  camera.direction_forward_vector.y = result_vector[1];
-  camera.direction_forward_vector.z = result_vector[2];
+  this->direction_forward_vector.x = result_vector[0];
+  this->direction_forward_vector.y = result_vector[1];
+  this->direction_forward_vector.z = result_vector[2];
 
   normalize_vector(&camera.direction_forward_vector);
 
@@ -2324,9 +2436,9 @@ void set_camera_rotation(float x, float y, float z)
 
   multiply_vector_matrix(helper_vector,vector_rotation_matrix,result_vector);
 
-  camera.direction_left_vector.x = result_vector[0];
-  camera.direction_left_vector.y = result_vector[1];
-  camera.direction_left_vector.z = result_vector[2];
+  this->direction_left_vector.x = result_vector[0];
+  this->direction_left_vector.y = result_vector[1];
+  this->direction_left_vector.z = result_vector[2];
 
   helper_vector[0] = 0;
   helper_vector[1] = 1;
@@ -2335,29 +2447,29 @@ void set_camera_rotation(float x, float y, float z)
 
   multiply_vector_matrix(helper_vector,vector_rotation_matrix,result_vector);
 
-  camera.direction_up_vector.x = result_vector[0];
-  camera.direction_up_vector.y = result_vector[1];
-  camera.direction_up_vector.z = result_vector[2];
+  this->direction_up_vector.x = result_vector[0];
+  this->direction_up_vector.y = result_vector[1];
+  this->direction_up_vector.z = result_vector[2];
 }
 
 //----------------------------------------------------------------------
 
-void get_camera_position(point_3d *position)
+void camera_struct::get_position(point_3d *position)
 
 {
-  position->x = camera.position.x;
-  position->y = camera.position.y;
-  position->z = camera.position.z;
+  position->x = this->position.x;
+  position->y = this->position.y;
+  position->z = this->position.z;
 }
 
 //----------------------------------------------------------------------
 
-void get_camera_rotation(point_3d *rotation)
+void camera_struct::get_rotation(point_3d *rotation)
 
 {
-  rotation->x = camera.rotation.x;
-  rotation->y = camera.rotation.y;
-  rotation->z = camera.rotation.z;
+  rotation->x = this->rotation.x;
+  rotation->y = this->rotation.y;
+  rotation->z = this->rotation.z;
 }
 
 //----------------------------------------------------------------------
@@ -2370,7 +2482,7 @@ int get_time()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::texture_map_plane(axis_direction direction)
+void mesh_3d::texture_map_plane(axis_direction direction, float plane_width, float plane_height)
 
 {
   unsigned int i;
@@ -2381,44 +2493,46 @@ void mesh_3d::texture_map_plane(axis_direction direction)
   this->get_bounding_box(&x0,&y0,&z0,&x1,&y1,&z1);
   width = x0 - x1;
   width = width < 0 ? -1 * width : width;
-  height = y0 = y1;
+  height = y0 - y1;
   height = height < 0 ? -1 * height : height;
   depth = z0 - z1;
-  depth < 0 ? -1 * depth : depth;
+  depth = depth < 0 ? -1 * depth : depth;
+
+cout << width << " " << height << " " << depth << endl;
 
   for (i = 0; i < this->vertices.size(); i++)
     {
       switch (direction)
         {
           case DIRECTION_LEFT:
-            u_coordination = (this->vertices[i].position.z - z0) / depth;
-            v_coordination = (this->vertices[i].position.y - y0) / height;
+            u_coordination = ((this->vertices[i].position.z - z0) / depth) * plane_width;
+            v_coordination = ((this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_RIGHT:
-            u_coordination = 1.0 - (this->vertices[i].position.z - z0) / depth;
-            v_coordination = 1.0 - (this->vertices[i].position.y - y0) / height;
+            u_coordination = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_width;
+            v_coordination = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_FORWARD:
-            u_coordination = (this->vertices[i].position.x - x0) / width;
-            v_coordination = (this->vertices[i].position.y - y0) / height;
+            u_coordination = ((this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordination = ((this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_BACKWARD:
-            u_coordination = 1.0 - (this->vertices[i].position.x - x0) / width;
-            v_coordination = 1.0 - (this->vertices[i].position.y - y0) / height;
+            u_coordination = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordination = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_UP:
-            u_coordination = (this->vertices[i].position.x - x0) / width;
-            v_coordination = (this->vertices[i].position.z - z0) / depth;
+            u_coordination = ((this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordination = ((this->vertices[i].position.z - z0) / depth) * plane_height;
             break;
 
           case DIRECTION_DOWN:
           default:
-            u_coordination = 1.0 - (this->vertices[i].position.x - x0) / width;
-            v_coordination = 1.0 - (this->vertices[i].position.z - z0) / depth;
+            u_coordination = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordination = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_height;
             break;
         }
 
@@ -2556,12 +2670,13 @@ mesh_3d::mesh_3d()
 
   this->set_color(255,255,255);
 
-  this->set_lighting_properties(0.1,0.5,0.8,100);
+  this->set_lighting_properties(0.2,0.5,0.8,100);
 
   this->set_position(0,0,0);
   this->set_rotation(0,0,0);
   this->set_scale(1,1,1);
   this->set_render_mode(RENDER_MODE_SHADED_GORAUD);
+  this->use_fog = true;
 }
 
 //----------------------------------------------------------------------
@@ -2612,7 +2727,7 @@ void mesh_3d::set_color(unsigned char red, unsigned char green, unsigned char bl
 
 //----------------------------------------------------------------------
 
-void handle_camera()
+void camera_struct::handle_fps()
 
 {
   float distance_to_go, angle_to_rotate;
@@ -2627,49 +2742,49 @@ void handle_camera()
   angle_to_rotate = time_difference * camera.rotation_speed;
 
   if (global_keyboard_state[camera.key_go_forward])
-    camera_go(DIRECTION_FORWARD,distance_to_go);
+    this->go(DIRECTION_FORWARD,distance_to_go);
   else if (global_keyboard_state[camera.key_go_backward])
-    camera_go(DIRECTION_BACKWARD,distance_to_go);
+    this->go(DIRECTION_BACKWARD,distance_to_go);
 
   if (global_keyboard_state[camera.key_go_left])
-    camera_go(DIRECTION_LEFT,distance_to_go);
+    this->go(DIRECTION_LEFT,distance_to_go);
   else if (global_keyboard_state[camera.key_go_right])
-    camera_go(DIRECTION_RIGHT,distance_to_go);
+    this->go(DIRECTION_RIGHT,distance_to_go);
 
   if (global_keyboard_state[camera.key_go_up])
-    camera_go(DIRECTION_UP,distance_to_go);
+    this->go(DIRECTION_UP,distance_to_go);
   else if (global_keyboard_state[camera.key_go_down])
-    camera_go(DIRECTION_DOWN,distance_to_go);
+    this->go(DIRECTION_DOWN,distance_to_go);
 
   bool limit_x_rotation = true;        /// this disallows camera handling function to rotate around x more than allowed (maximum and minimum angle)
   float maximum_x_angle = 90;
   float minimum_x_angle = -90;
 
   if (global_keyboard_state[camera.key_rotate_x_cw])
-    camera_rotate(-1 *angle_to_rotate,0,0);
+    this->rotate(-1 *angle_to_rotate,0,0);
   else if (global_keyboard_state[camera.key_rotate_x_ccw])
-    camera_rotate(angle_to_rotate,0,0);
+    this->rotate(angle_to_rotate,0,0);
 
-  if (camera.limit_x_rotation)
+  if (this->limit_x_rotation)
     {
       point_3d camera_rotation;
-      get_camera_rotation(&camera_rotation);
+      this->get_rotation(&camera_rotation);
 
       if (camera_rotation.x < 270.0 && camera_rotation.x > 180.0)
-        set_camera_rotation(270.0,camera_rotation.y,camera_rotation.z);
+        this->set_rotation(270.0,camera_rotation.y,camera_rotation.z);
       else if (camera_rotation.x > 90 && camera_rotation.x < 270.0)
-        set_camera_rotation(90.0,camera_rotation.y,camera_rotation.z);
+        this->set_rotation(90.0,camera_rotation.y,camera_rotation.z);
     }
 
   if (global_keyboard_state[camera.key_rotate_y_cw])
-    camera_rotate(0,angle_to_rotate,0);
+    this->rotate(0,angle_to_rotate,0);
   else if (global_keyboard_state[camera.key_rotate_y_ccw])
-    camera_rotate(0,-1 * angle_to_rotate,0);
+    this->rotate(0,-1 * angle_to_rotate,0);
 
   if (global_keyboard_state[camera.key_rotate_z_cw])
-    camera_rotate(0,0,angle_to_rotate);
+    this->rotate(0,0,angle_to_rotate);
   else if (global_keyboard_state[camera.key_rotate_z_ccw])
-    camera_rotate(0,0,-1 * angle_to_rotate);
+    this->rotate(0,0,-1 * angle_to_rotate);
 }
 
 //----------------------------------------------------------------------
@@ -2686,6 +2801,7 @@ void mesh_3d::draw()
 
   glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
   glUniform1ui(use_texture_location,this->texture == NULL ? 0 : 1);
+  glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
   glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
   glUniform1ui(transparency_enabled_location,this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
@@ -2735,6 +2851,14 @@ void mesh_3d::draw()
 
 //----------------------------------------------------------------------
 
+void mesh_3d::set_use_fog(bool enable)
+
+{
+  this->use_fog = enable;
+}
+
+//----------------------------------------------------------------------
+
 void texture_2d::set_pixel(int x, int y, unsigned char red, unsigned char green, unsigned char blue)
 
 {
@@ -2758,6 +2882,9 @@ void set_fog(float distance)
   float fog_distance_for_shader;   // distance from the viewer and normalized
   global_fog_distance = distance;
   fog_distance_for_shader = (global_far - distance) / global_far;
+
+  if (distance <= 0.0)
+    fog_distance_for_shader = -1.0;   // disables the fog
 
   glUniform1f(fog_distance_location,(GLfloat) fog_distance_for_shader);
 }
@@ -2822,6 +2949,16 @@ void mesh_3d::flip_triangles()
     }
 
   this->update();
+}
+
+//----------------------------------------------------------------------
+
+void camera_struct::set_skybox(mesh_3d *what)
+
+{
+  this->skybox = what;
+
+  this->set_position(this->position.x,this->position.y,this->position.z);   // aligns the skybox with the camera
 }
 
 //----------------------------------------------------------------------
@@ -3036,7 +3173,7 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   global_window_height = window_height;
   global_fov = 95;
   global_near = 0.05;
-  global_far = 30;
+  global_far = 100;
 
   user_render_function = draw_function;
   glutInit(argc_pointer,argv);
@@ -3060,8 +3197,8 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   glEnable(GL_DEPTH_TEST);
   compile_shaders();
   set_perspective(global_fov,global_near,global_far);
-  set_camera_position(0,0,0);
-  set_camera_rotation(0,0,0);
+  camera.set_position(0,0,0);
+  camera.set_rotation(0,0,0);
   glUniform1i(texture_unit_location,0);   // we'll always be using the unit 0
 
   point_3d light_direction;
