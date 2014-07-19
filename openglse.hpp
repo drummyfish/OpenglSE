@@ -348,6 +348,7 @@ class mesh_3d      /// a 3D mesh made of triangles
       unsigned int color[3];   /// RGB mesh color that's used when the mesh doesn't have any texture
       float color_float[3];    /// mesh RGB color in range <0,1>
       render_mode mesh_render_mode;         /// determines how the model will be rendered
+      mesh_3d *instance_parent;             /// if this object is an instance of another mesh, this points to it
 
       float material_ambient_intensity;     /// in range <0,1>, affects how much ambient light is reflected
       float material_diffuse_intensity;     /// in range <0,1>, affects how much diffuse light is reflected
@@ -408,6 +409,25 @@ class mesh_3d      /// a 3D mesh made of triangles
 
          @param enable if true, the mesh will be affected by fog,
                 otherwise not
+         */
+
+      void make_instance_of(mesh_3d *what);
+        /**<
+         Makes this mesh an instance of another mesh (that means that
+         this mesh will use the other meshe's vertex data stored in GPU
+         memory.) The vertex data of this mesh will be deleted by
+         calling this method.
+
+         @param what mesh of which this mesh will become an instance
+         */
+
+      void get_vbo_ibo(GLuint *vbo, GLuint *ibo);
+        /**<
+         Gets the VBO (vertex buffer object) and IBO (index buffer object)
+         handles.
+
+         @param vbo in this vriable VBO handle will be returned
+         @param ibo in this vriable IBO handle will be returned
          */
 
       unsigned int vertex_count();
@@ -539,7 +559,8 @@ class mesh_3d      /// a 3D mesh made of triangles
          This should be called if the models vertices or triangles have
          changed to reupload the model to the GPU. There's no need to
          call this method when position, rotation or scale of the model
-         have been changed.
+         have been changed. This method doesn nothing if the mesh is an
+         instance of another mesh.
         */
 
       void draw();
@@ -2495,8 +2516,6 @@ void mesh_3d::texture_map_plane(axis_direction direction, float plane_width, flo
   depth = z0 - z1;
   depth = depth < 0 ? -1 * depth : depth;
 
-cout << width << " " << height << " " << depth << endl;
-
   for (i = 0; i < this->vertices.size(); i++)
     {
       switch (direction)
@@ -2591,7 +2610,27 @@ void mesh_3d::clear()
 {
   this->vertices.clear();
   this->triangles.clear();
-  this->texture = NULL;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d::make_instance_of(mesh_3d *what)
+
+{
+  GLuint what_vbo,what_ibo;
+
+  if (this->vbo != 0)
+    glDeleteBuffers(1,&this->vbo);
+
+  if (this->ibo != 0)
+    glDeleteBuffers(1,&this->ibo);
+
+  what->get_vbo_ibo(&what_vbo,&what_ibo);
+
+  this->vbo = what_vbo;
+  this->ibo = what_ibo;
+
+  this->instance_parent = what;
 }
 
 //----------------------------------------------------------------------
@@ -2658,12 +2697,22 @@ void set_perspective(float fov_degrees, float near_plane, float far_plane)
 
 //----------------------------------------------------------------------
 
+void mesh_3d::get_vbo_ibo(GLuint *vbo, GLuint *ibo)
+
+{
+  *vbo = this->vbo;
+  *ibo = this->ibo;
+}
+
+//----------------------------------------------------------------------
+
 mesh_3d::mesh_3d()
 
 {
   this->vbo = 0;
   this->ibo = 0;
   this->texture = NULL;
+  this->instance_parent = NULL;
 
   this->set_color(255,255,255);
 
@@ -2689,6 +2738,9 @@ void mesh_3d::set_texture(texture_2d *texture)
 void mesh_3d::update()
 
 {
+  if (this->instance_parent != NULL)
+    return;
+
   if (this->vbo == 0)
     glGenBuffers(1,&this->vbo);
 
@@ -2701,7 +2753,7 @@ void mesh_3d::update()
   if (this->ibo == 0)
     glGenBuffers(1,&this->ibo);
 
-   if (this->ibo == 0)
+  if (this->ibo == 0)
     cerr << "ERROR: IBO couldn't be allocated for the mesh.";
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ibo);
@@ -2785,18 +2837,21 @@ void camera_struct::handle_fps()
 void mesh_3d::draw()
 
 {
+  unsigned int number_of_triangles;
+
   if (this->vertices.size() == 0 || this->triangles.size() == 0)
     return;
 
   float transparent_color[3];
 
-  this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
+  if (this->texture != NULL)
+    this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
 
   glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
   glUniform1ui(use_texture_location,this->texture == NULL ? 0 : 1);
   glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
   glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
-  glUniform1ui(transparency_enabled_location,this->texture->transparency_is_enabled() ? 1 : 0);
+  glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
   glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
   glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
@@ -2836,7 +2891,12 @@ void mesh_3d::draw()
         break;
     }
 
-  glDrawElements(GL_TRIANGLES,this->triangles.size() * 3,GL_UNSIGNED_INT,0);
+  if (this->instance_parent == NULL)
+    number_of_triangles = this->triangles.size();
+  else
+    number_of_triangles = this->instance_parent->triangle_count();
+
+  glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
   glDisableVertexAttribArray(0);
   glDisableVertexAttribArray(1);
   glDisableVertexAttribArray(2);
@@ -3113,7 +3173,11 @@ void draw_pixel(unsigned int x, unsigned int y, unsigned char r, unsigned char g
 mesh_3d::~mesh_3d()
 
 {
-  glDeleteBuffers(1,&this->vbo);
+  if (this->vbo != 0)
+    glDeleteBuffers(1,&this->vbo);
+
+  if (this->ibo != 0)
+    glDeleteBuffers(1,&this->ibo);
 }
 
 //----------------------------------------------------------------------

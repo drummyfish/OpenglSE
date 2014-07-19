@@ -23,15 +23,15 @@ implemented features:
 - basic automatic texture mapping
 - skybox support
 - possibility to turn off fog for specific objects (e.g. sky box)
+- instancing (sharing mesh data on GPU)
 
 to-do:
 - very simple shadows (dark blobs underneath objects)
-- basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file)
+- basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
 - mouse input handling
 - LOD (multiple meshes being switched depending on the distance)
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)
 - simple colision detection
-- instancing (sharing mesh data on GPU)
 - nearby vertices merging
