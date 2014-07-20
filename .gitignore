@@ -218,3 +218,6 @@ pip-log.txt
 moje.cpp
 *.dll
 *.exe
+*.png
+*.mtl
+*.bmp

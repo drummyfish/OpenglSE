@@ -2329,31 +2329,86 @@ bool mesh_3d::load_obj(string filename)
   ifstream obj_file(filename.c_str());
   string line;
   float obj_line_data[4][3];
+  point_3d helper_point;
+
+  vector<point_3d> normals;
+  vector<point_3d> texture_vertices;
 
   if (!obj_file.is_open())
     return false;
 
   this->clear();
 
-  while (getline(obj_file,line) )
+  while (getline(obj_file,line))
     {
       switch (line[0])
         {
           case 'v':
-            parse_obj_line(line,obj_line_data);
-            this->add_vertex(obj_line_data[0][0],obj_line_data[1][0],obj_line_data[2][0],0,0,1,0,0);
-            break;
-          case 'f':
-            parse_obj_line(line,obj_line_data);
-
-            if (obj_line_data[3][0] < 0.0)   // 3 vertex face
-              this->add_triangle(floor(obj_line_data[0][0]) - 1,floor(obj_line_data[1][0]) - 1,roundf(obj_line_data[2][0]) - 1);
-            else                             // 4 vertex face
+            if (line[1] == 'n')        // normal vertex
               {
-                this->add_triangle(floor(obj_line_data[0][0]) - 1,floor(obj_line_data[1][0]) - 1,roundf(obj_line_data[2][0]) - 1);
-                this->add_triangle(floor(obj_line_data[0][0]) - 1,floor(obj_line_data[2][0]) - 1,roundf(obj_line_data[3][0]) - 1);
+                parse_obj_line(line,obj_line_data);
+
+                helper_point.x = obj_line_data[0][0];
+                helper_point.y = obj_line_data[1][0];
+                helper_point.z = obj_line_data[2][0];
+
+                normals.push_back(helper_point);
+                break;
+              }
+            else if (line[1] == 't')   // texture vertex
+              {
+                parse_obj_line(line,obj_line_data);
+
+                helper_point.x = obj_line_data[0][0];
+                helper_point.y = obj_line_data[1][0];
+                helper_point.z = 0;
+
+                texture_vertices.push_back(helper_point);
+                break;
+              }
+            else                       // position vertex
+              {
+                parse_obj_line(line,obj_line_data);
+                this->add_vertex(obj_line_data[0][0],obj_line_data[1][0],obj_line_data[2][0],0,0,1,0,0);
+                break;
               }
 
+          case 'f':
+            unsigned int indices[4],i,faces;
+
+            parse_obj_line(line,obj_line_data);
+
+            for (i = 0; i < 4; i++)     // triangle indexes
+              indices[i] = floor(obj_line_data[i][0]) - 1;
+
+            if (obj_line_data[3][0] < 0.0)
+              {
+                this->add_triangle(indices[0],indices[1],indices[2]);
+                faces = 3;     // 3 vertex face
+              }
+            else
+              {
+                this->add_triangle(indices[0],indices[1],indices[2]);
+                this->add_triangle(indices[0],indices[2],indices[3]);
+                faces = 4;     // 4 vertex face
+              }
+
+            for (i = 0; i < faces; i++)    // texture coordinates and normals
+              {
+                if (indices[i] >= this->vertices.size())
+                  continue;
+
+                this->vertices[indices[i]].texture_coordination[0] = texture_vertices[floor(obj_line_data[i][1]) - 1].x;
+                this->vertices[indices[i]].texture_coordination[1] = texture_vertices[floor(obj_line_data[i][1]) - 1].y;
+
+                this->vertices[indices[i]].normal.x = normals[floor(obj_line_data[i][2]) - 1].x;
+                this->vertices[indices[i]].normal.y = normals[floor(obj_line_data[i][2]) - 1].y;
+                this->vertices[indices[i]].normal.z = normals[floor(obj_line_data[i][2]) - 1].z;
+              }
+
+            break;
+
+          default:
             break;
         }
     }
