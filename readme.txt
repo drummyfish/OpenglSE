@@ -24,6 +24,7 @@ implemented features:
 - skybox support
 - possibility to turn off fog for specific objects (e.g. sky box)
 - instancing (sharing mesh data on GPU)
+- texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
 
 to-do:
 - very simple shadows (dark blobs underneath objects)

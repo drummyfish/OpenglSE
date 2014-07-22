@@ -27,11 +27,13 @@ char shader_vertex[] =
 "layout (location = 0) in vec3 position;                      \n"
 "layout (location = 1) in vec2 texture_coordination;          \n"
 "layout (location = 2) in vec3 normal;                        \n"
+"layout (location = 3) in float texture_blend_ratio;          \n"
 "                                                             \n"
 "uniform mat4 perspective_matrix;                             \n"
 "uniform mat4 world_matrix;                                   \n"
 "uniform mat4 view_matrix;                                    \n"
 "uniform vec3 light_direction;                                \n"
+"uniform uint textures;                                       \n"
 "uniform vec3 camera_position;                                \n"
 "uniform float ambient_factor;     // material variable       \n"
 "uniform float diffuse_factor;     // material variable       \n"
@@ -42,6 +44,9 @@ char shader_vertex[] =
 "uniform float far_plane;          // far plane distance      \n"
 "                                                             \n"
 "out vec2 uv_coordination;                                    \n"
+
+"out float texture_ratio;                                     \n"
+
 "out float final_intensity;      // computed from lighting    \n"
 "out vec3 transformed_normal;    // normal after object transformation \n"
 "out vec3 transformed_position;                               \n"
@@ -59,6 +64,9 @@ char shader_vertex[] =
 "  uv_coordination = texture_coordination;                                                             \n"
 "  transformed_normal = (world_matrix * vec4(normal, 0.0)).xyz;                                        \n"
 "                                                                                                      \n"
+"  if (textures == uint(2))                                                                            \n"
+"    texture_ratio = texture_blend_ratio;                                                              \n"
+"                                                                                                      \n"
 "  if (fog_distance > 0) // fog enabled                                                                \n"
 "    fog_intensity = clamp(pow((1.0 - gl_Position.z / far_plane) / (1.0 - fog_distance),2),0.0,1.0);   \n"
 "  else                                                                                                \n"
@@ -66,7 +74,8 @@ char shader_vertex[] =
 "                                                                                                      \n"
 "  if (render_mode == uint(0)) {                                                                       \n"
 "    diffuse_intensity = 1.0;                                                                          \n"
-"    specular_intensity = 1.0; }                                                                       \n"
+"    specular_intensity = 1.0;                                                                         \n"
+"    final_intensity = 1.0; }                                                                          \n"
 "  else {                                                                                              \n"
 "    diffuse_intensity = clamp(dot(normalize(transformed_normal),-1 * light_direction),0.0,1.0);       \n"
 "    reflection_vector = normalize(reflect(light_direction,transformed_normal));                       \n"
@@ -82,11 +91,13 @@ char shader_fragment[] =
 "in float final_intensity;                                    \n"
 "in vec3 transformed_normal;                                  \n"
 "in vec3 transformed_position;                                \n"
-"out vec4 FragColor;                                          \n"
+"in float texture_ratio;                                      \n"
 "in float fog_intensity;         // 0 = maximum fog           \n"
+"out vec4 FragColor;                                          \n"
 "                                                             \n"
 "uniform sampler2D texture_unit;                              \n"
-"uniform bool use_texture;         // whether to use texture or just color \n"
+"uniform sampler2D texture_unit2;  // second texture layer    \n"
+"uniform uint textures;            // number of textures (0,1 or 2) \n"
 "uniform vec3 mesh_color;                                     \n"
 "uniform vec3 light_direction;                                \n"
 "uniform vec3 light_color;                                    \n"
@@ -111,10 +122,13 @@ char shader_fragment[] =
 "                                                             \n"
 "void main()                                                  \n"
 "{                                                            \n"
-"  if (use_texture)                                           \n"
-"    FragColor = texture2D(texture_unit,uv_coordination.xy);  \n"
-"  else                                                       \n"
+"  if (textures == uint(0))                                   \n"
 "    FragColor = vec4(mesh_color,1.0);                        \n"
+"  else {                                                     \n"
+"    FragColor = texture2D(texture_unit,uv_coordination.xy);  \n"
+"    if (textures == uint(2))                                 \n"
+"       FragColor = mix(texture2D(texture_unit2,uv_coordination.xy),FragColor,texture_ratio);  \n"
+"    }                                                        \n"
 "                                                             \n"
 "  if (render_mode == uint(2)) {                                                                               \n"
 "    diffuse_intensity = clamp(dot(normalize(transformed_normal),-1 * light_direction),0.0,1.0);               \n"
@@ -187,6 +201,7 @@ typedef struct     /// a vertice in 3D space
     point_3d position;
     float texture_coordination[2];
     point_3d normal;
+    float texture_blend_ratio;      /// for texture blending
   } vertex_3d;
 
 typedef struct     /// a triangle in 3D space
@@ -344,7 +359,8 @@ class mesh_3d      /// a 3D mesh made of triangles
       point_3d rotation;   /// the object's rotation in angles, x, y and z are roll, pitch and yaw
       point_3d scale;
       bool use_fog;
-      texture_2d *texture; /// the texture associated with the mesh
+      texture_2d *texture;     /// the texture associated with the mesh
+      texture_2d *texture2;    /// second texture layer for texture blending (e.g. for terrain)
       unsigned int color[3];   /// RGB mesh color that's used when the mesh doesn't have any texture
       float color_float[3];    /// mesh RGB color in range <0,1>
       render_mode mesh_render_mode;         /// determines how the model will be rendered
@@ -475,6 +491,16 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param plena_height height of the plane
          */
 
+      void texture_map_layer_mask(texture_2d *mask);
+        /**<
+         Maps a mask defining texture layers blend. This information is
+         encoded into mesh vertices. The mapping is done depending on
+         vertices x and z position.
+
+         @param mask gryscale blend mask (only red component is taken
+                into account)
+         */
+
       void set_lighting_properties(float ambient, float diffuse, float specular, float specular_exponent);
         /**<
          Sets the lighting properties that affect how the light is
@@ -491,6 +517,15 @@ class mesh_3d      /// a 3D mesh made of triangles
          Sets given texture to be used with this mesh.
 
          @param texture texture to be set for the mesh
+        */
+
+      void set_texture2(texture_2d *texture);
+        /**<
+         Sets given texture to be used as a second texture layer with
+         this mesh.
+
+         @param texture texture to be set for the mesh as a second
+                texture layer
         */
 
       void set_position(float x, float y, float z);
@@ -826,7 +861,8 @@ GLuint perspective_matrix_location;                                /// perspecti
 GLuint world_matrix_location;                                      /// world matrix location
 GLuint view_matrix_location;                                       /// view matrix location
 GLuint texture_unit_location;                                      /// texture matrix location
-GLuint use_texture_location;
+GLuint texture2_unit_location;
+GLuint textures_location;
 GLuint mesh_color_location;
 GLuint camera_position_location;
 GLuint light_direction_location;
@@ -1389,6 +1425,8 @@ bool add_shader(GLuint shader_program, const char* shader_text, GLenum shader_ty
 bool compile_shaders()
 
 {
+  char log[256];
+
   GLuint shader_program = glCreateProgram();
 
   if (shader_program == 0)
@@ -1417,6 +1455,8 @@ bool compile_shaders()
 
   if (success == 0)
     {
+      glGetProgramInfoLog(shader_program,sizeof(log),NULL,log);
+      cerr << log << endl;
       cerr << "ERROR: could not link the shader program." << endl;
       return false;
     }
@@ -1437,7 +1477,8 @@ bool compile_shaders()
   world_matrix_location = glGetUniformLocation(shader_program,"world_matrix");
   view_matrix_location = glGetUniformLocation(shader_program,"view_matrix");
   texture_unit_location = glGetUniformLocation(shader_program,"texture_unit");
-  use_texture_location = glGetUniformLocation(shader_program,"use_texture");
+  texture2_unit_location = glGetUniformLocation(shader_program,"texture_unit2");
+  textures_location = glGetUniformLocation(shader_program,"textures");
   mesh_color_location = glGetUniformLocation(shader_program,"mesh_color");
   light_direction_location = glGetUniformLocation(shader_program,"light_direction");
   light_color_location = glGetUniformLocation(shader_program,"light_color");
@@ -2616,6 +2657,36 @@ void mesh_3d::texture_map_plane(axis_direction direction, float plane_width, flo
 
 //----------------------------------------------------------------------
 
+void mesh_3d::texture_map_layer_mask(texture_2d *mask)
+
+{
+  unsigned int i;
+  float width,depth;
+  float x0,y0,z0,x1,y1,z1;
+  unsigned int x,y;
+  unsigned char r,g,b;
+
+  this->get_bounding_box(&x0,&y0,&z0,&x1,&y1,&z1);
+  width = x0 - x1;
+  width = width < 0 ? -1 * width : width;
+  depth = z0 - z1;
+  depth = depth < 0 ? -1 * depth : depth;
+
+  for (i = 0; i < this->vertices.size(); i++)
+    {
+      x = (1.0 - (this->vertices[i].position.x - x0) / width) * (mask->get_width() - 1);
+      y = (1.0 - (this->vertices[i].position.z - z0) / depth) * (mask->get_height() - 1);
+
+      mask->get_pixel(x,y,&r,&g,&b);
+
+      this->vertices[i].texture_blend_ratio = r / 255.0;
+    }
+
+  this->update();
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::get_position(point_3d *point)
 
 {
@@ -2767,6 +2838,7 @@ mesh_3d::mesh_3d()
   this->vbo = 0;
   this->ibo = 0;
   this->texture = NULL;
+  this->texture2 = NULL;
   this->instance_parent = NULL;
 
   this->set_color(255,255,255);
@@ -2786,6 +2858,14 @@ void mesh_3d::set_texture(texture_2d *texture)
 
 {
   this->texture = texture;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d::set_texture2(texture_2d *texture)
+
+{
+  this->texture2 = texture;
 }
 
 //----------------------------------------------------------------------
@@ -2903,7 +2983,14 @@ void mesh_3d::draw()
     this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
 
   glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
-  glUniform1ui(use_texture_location,this->texture == NULL ? 0 : 1);
+
+  if (this->texture == NULL)
+    glUniform1ui(textures_location,(GLuint) 0);
+  else if (this->texture2 == NULL)
+    glUniform1ui(textures_location,(GLuint) 1);
+  else
+    glUniform1ui(textures_location,(GLuint) 2);
+
   glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
   glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
   glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
@@ -2917,17 +3004,25 @@ void mesh_3d::draw()
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
   glEnableVertexAttribArray(2);
+  glEnableVertexAttribArray(3);
 
   if (this->texture != NULL)
     {
       glActiveTexture(GL_TEXTURE0);      // set the active texture unit to 0
       glBindTexture(GL_TEXTURE_2D,this->texture->get_texture_object());
+
+      if (this->texture2 != NULL)
+        {
+          glActiveTexture(GL_TEXTURE1);
+          glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
+        }
     }
 
   glBindBuffer(GL_ARRAY_BUFFER,this->vbo);
   glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),0);                   // position
   glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 12);  // texture coordination
   glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 20);  // normal
+  glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 32);  // texture blend ratio
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ibo);
 
@@ -2955,6 +3050,7 @@ void mesh_3d::draw()
   glDisableVertexAttribArray(0);
   glDisableVertexAttribArray(1);
   glDisableVertexAttribArray(2);
+  glDisableVertexAttribArray(3);
 }
 
 //----------------------------------------------------------------------
@@ -3168,6 +3264,8 @@ void mesh_3d::add_vertex(float x, float y, float z, float texture_u, float textu
 {
   vertex_3d vertex;
 
+  vertex.texture_blend_ratio = 1.0;
+
   vertex.position.x = x;
   vertex.position.y = y;
   vertex.position.z = z;
@@ -3309,7 +3407,8 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   set_perspective(global_fov,global_near,global_far);
   camera.set_position(0,0,0);
   camera.set_rotation(0,0,0);
-  glUniform1i(texture_unit_location,0);   // we'll always be using the unit 0
+  glUniform1i(texture_unit_location,0);   // we'll always be using the unit 0 for the first texture layer
+  glUniform1i(texture2_unit_location,1);   // 1 for the second texture layer
 
   point_3d light_direction;
 
