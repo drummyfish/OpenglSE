@@ -62,7 +62,7 @@ char shader_vertex[] =
 "  transformed_position = (world_matrix * vec4(position,1.0)).xyz;                                     \n"
 "  gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                    \n"
 "  uv_coordination = texture_coordination;                                                             \n"
-"  transformed_normal = (world_matrix * vec4(normal, 0.0)).xyz;                                        \n"
+"  transformed_normal = normalize((world_matrix * vec4(normal, 0.0)).xyz);                                        \n"
 "                                                                                                      \n"
 "  if (textures == uint(2))                                                                            \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
@@ -72,17 +72,19 @@ char shader_vertex[] =
 "  else                                                                                                \n"
 "    fog_intensity = 1.0;                                                                              \n"
 "                                                                                                      \n"
-"  if (render_mode == uint(0)) {                                                                       \n"
+"  if (render_mode == uint(0)) {    // no light                                                        \n"
 "    diffuse_intensity = 1.0;                                                                          \n"
 "    specular_intensity = 1.0;                                                                         \n"
 "    final_intensity = 1.0; }                                                                          \n"
-"  else {                                                                                              \n"
-"    diffuse_intensity = clamp(dot(normalize(transformed_normal),-1 * light_direction),0.0,1.0);       \n"
-"    reflection_vector = normalize(reflect(light_direction,transformed_normal));                       \n"
+"  else if (render_mode == uint(1)) {   // Goraud shading                                              \n"
+"    diffuse_intensity = clamp(dot(normalize(transformed_normal),light_direction),0.0,1.0);       \n"
+"    reflection_vector = normalize(reflect(-1 * light_direction,transformed_normal));                       \n"
 "    direction_to_camera = normalize(camera_position - transformed_position);                          \n"
 "    specular_intensity = clamp(dot(direction_to_camera,reflection_vector),0.0,1.0);                   \n"
 "    specular_intensity = clamp(pow(specular_intensity,specular_exponent),0.0,1.0);                    \n"
 "    final_intensity = ambient_factor + diffuse_factor * diffuse_intensity + specular_factor * specular_intensity; } \n"
+"  else                                                                                                \n"
+"    final_intensity = 1.0;                                                                            \n"
 "}                                                            \n";
 
 char shader_fragment[] =
@@ -130,9 +132,9 @@ char shader_fragment[] =
 "       FragColor = mix(texture2D(texture_unit2,uv_coordination.xy),FragColor,texture_ratio);  \n"
 "    }                                                        \n"
 "                                                             \n"
-"  if (render_mode == uint(2)) {                                                                               \n"
-"    diffuse_intensity = clamp(dot(normalize(transformed_normal),-1 * light_direction),0.0,1.0);               \n"
-"    reflection_vector = normalize(reflect(light_direction,transformed_normal));                               \n"
+"  if (render_mode == uint(2)) { // Phong                                                                      \n"
+"    diffuse_intensity = clamp(dot(normalize(transformed_normal),light_direction),0.0,1.0);               \n"
+"    reflection_vector = normalize(reflect(-1 * light_direction,transformed_normal));                               \n"
 "    direction_to_camera = normalize(camera_position - transformed_position);                                  \n"
 "    specular_intensity = clamp(dot(direction_to_camera,reflection_vector),0.0,1.0);                           \n"
 "    specular_intensity = clamp(pow(specular_intensity,specular_exponent),0.0,1.0);                            \n"
@@ -560,21 +562,21 @@ class mesh_3d      /// a 3D mesh made of triangles
         /**<
          Gets the object position.
 
-         @param point in this variable the object position will be returned;
+         @param point in this variable the object position will be returned
+        */
+
+      void get_scale(point_3d *scale);
+        /**<
+         Gets the object scale.
+
+         @param scale in this variable the object scale (in x, y and z) will be returned
         */
 
       void get_rotation(point_3d *point);
         /**<
          Gets the object rotation.
 
-         @param point in this variable the object rotation will be returned;
-        */
-
-      void get_scale(point_3d *point);
-        /**<
-         Gets the object scale.
-
-         @param point in this variable the object scale will be returned;
+         @param point in this variable the object rotation will be returned
         */
 
       void get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1);
@@ -2434,17 +2436,23 @@ bool mesh_3d::load_obj(string filename)
                 faces = 4;     // 4 vertex face
               }
 
+            unsigned int vt_index, vn_index;
+
             for (i = 0; i < faces; i++)    // texture coordinates and normals
               {
-                if (indices[i] >= this->vertices.size())
+                vt_index = floor(obj_line_data[i][1]) - 1;
+                vn_index = floor(obj_line_data[i][2]) - 1;
+
+                if (indices[i] >= this->vertices.size() || vt_index >= texture_vertices.size() ||
+                  vn_index >= normals.size())
                   continue;
 
-                this->vertices[indices[i]].texture_coordination[0] = texture_vertices[floor(obj_line_data[i][1]) - 1].x;
-                this->vertices[indices[i]].texture_coordination[1] = texture_vertices[floor(obj_line_data[i][1]) - 1].y;
+                this->vertices[indices[i]].texture_coordination[0] = texture_vertices[vt_index].x;
+                this->vertices[indices[i]].texture_coordination[1] = texture_vertices[vt_index].y;
 
-                this->vertices[indices[i]].normal.x = normals[floor(obj_line_data[i][2]) - 1].x;
-                this->vertices[indices[i]].normal.y = normals[floor(obj_line_data[i][2]) - 1].y;
-                this->vertices[indices[i]].normal.z = normals[floor(obj_line_data[i][2]) - 1].z;
+                this->vertices[indices[i]].normal.x = normals[vn_index].x;
+                this->vertices[indices[i]].normal.y = normals[vn_index].y;
+                this->vertices[indices[i]].normal.z = normals[vn_index].z;
               }
 
             break;
@@ -2707,16 +2715,6 @@ void mesh_3d::get_rotation(point_3d *point)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::get_scale(point_3d *point)
-
-{
-  point->x = this->scale.x;
-  point->y = this->scale.y;
-  point->z = this->scale.z;
-}
-
-//----------------------------------------------------------------------
-
 void mesh_3d::set_position(float x, float y, float z)
 
 {
@@ -2854,6 +2852,16 @@ mesh_3d::mesh_3d()
 
 //----------------------------------------------------------------------
 
+void mesh_3d::get_scale(point_3d *scale)
+
+{
+  scale->x = this->scale.x;
+  scale->y = this->scale.y;
+  scale->z = this->scale.z;
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::set_texture(texture_2d *texture)
 
 {
@@ -2973,11 +2981,10 @@ void mesh_3d::draw()
 
 {
   unsigned int number_of_triangles;
+  float transparent_color[3];
 
   if (this->vertices.size() == 0 || this->triangles.size() == 0)
     return;
-
-  float transparent_color[3];
 
   if (this->texture != NULL)
     this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
@@ -2992,7 +2999,26 @@ void mesh_3d::draw()
     glUniform1ui(textures_location,(GLuint) 2);
 
   glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
-  glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
+
+  switch (this->mesh_render_mode)
+    {
+      case RENDER_MODE_NO_LIGHT:
+        glUniform1ui(render_mode_location,(GLuint) 0);
+        break;
+
+      case RENDER_MODE_SHADED_GORAUD:
+        glUniform1ui(render_mode_location,(GLuint) 1);
+        break;
+
+      case RENDER_MODE_SHADED_PHONG:
+        glUniform1ui(render_mode_location,(GLuint) 2);
+        break;
+
+      case RENDER_MODE_WIREFRAME:
+        glUniform1ui(render_mode_location,(GLuint) 3);
+        break;
+    }
+
   glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
   glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
