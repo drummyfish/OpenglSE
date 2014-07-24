@@ -36,4 +36,4 @@ to-do:
 - 2D image rendering
 - billboarding (2D sprites)
 - simple colision detection
-- nearby vertices merging
+- basic mesh operations (vertex merging, decreasing polygon count etc.)

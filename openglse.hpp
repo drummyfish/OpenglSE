@@ -415,6 +415,18 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param mode mode to be set
          */
 
+      void merge_vertices(unsigned int index1, unsigned int index2, bool average_position);
+        /**<
+         Merges two vertices into one while preserving the mesh
+         triangles (their indices will be recomputed).
+
+         @param index1 index of the first vertex to be merged
+         @param index2 index of the second vertex to be merged
+         @param average_position if true, the new vertex will be placed
+                at average position of both vertices, otherwise the
+                second vertex (index2) will be merged into the first one
+         */
+
       void flip_triangles();
         /**<
          Flips the vertex triangles and normals (so that they're facing
@@ -3319,6 +3331,54 @@ float get_fps()
 
 //----------------------------------------------------------------------
 
+void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool average_position)
+
+{
+  unsigned int i;
+
+  if (index1 == index2 || index1 >= this->vertices.size() || index2 >= this->vertices.size())
+    return;
+
+
+  if (average_position)
+    {
+      this->vertices[index1].position.x = (this->vertices[index1].position.x + this->vertices[index2].position.x) / 2.0;
+      this->vertices[index1].position.y = (this->vertices[index1].position.y + this->vertices[index2].position.y) / 2.0;
+      this->vertices[index1].position.z = (this->vertices[index1].position.z + this->vertices[index2].position.z) / 2.0;
+
+      this->vertices[index1].normal.x = (this->vertices[index1].position.x + this->vertices[index2].normal.x) / 2.0;
+      this->vertices[index1].normal.y = (this->vertices[index1].position.y + this->vertices[index2].normal.y) / 2.0;
+      this->vertices[index1].normal.z = (this->vertices[index1].position.z + this->vertices[index2].normal.z) / 2.0;
+
+      normalize_vector(&this->vertices[index1].normal);
+    }
+
+  this->vertices.erase(this->vertices.begin() + index2);
+
+  for (i = 0; i < this->triangles.size(); i++)
+    {
+      cout << i << " " << this->triangles[i].index1 << " " << this->triangles[i].index2 << " " << this->triangles[i].index3 << endl;
+      cout << index2 << endl;
+
+      if (this->triangles[i].index1 == index2)
+        this->triangles[i].index1 = index1;
+      else if (this->triangles[i].index1 > index2)
+        this->triangles[i].index1 -= 1;
+
+      if (this->triangles[i].index2 == index2)
+        this->triangles[i].index2 = index1;
+      else if (this->triangles[i].index2 > index2)
+        this->triangles[i].index2 -= 1;
+
+      if (this->triangles[i].index3 == index2)
+        this->triangles[i].index3 = index1;
+      else if (this->triangles[i].index3 > index2)
+        this->triangles[i].index3 -= 1;
+    }
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z)
 
 {
@@ -3467,7 +3527,7 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   set_perspective(global_fov,global_near,global_far);
   camera.set_position(0,0,0);
   camera.set_rotation(0,0,0);
-  glUniform1i(texture_unit_location,0);   // we'll always be using the unit 0 for the first texture layer
+  glUniform1i(texture_unit_location,0);    // we'll always be using the unit 0 for the first texture layer
   glUniform1i(texture2_unit_location,1);   // 1 for the second texture layer
 
   point_3d light_direction;
