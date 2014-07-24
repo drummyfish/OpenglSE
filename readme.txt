@@ -20,6 +20,7 @@ implemented features:
 - simple time measurement
 - terrain generation based on provided heightmap image
 - fog
+- FPS measurement
 - basic automatic texture mapping
 - skybox support
 - possibility to turn off fog for specific objects (e.g. sky box)

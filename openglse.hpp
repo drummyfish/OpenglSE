@@ -9,6 +9,7 @@
 #define GLEW_STATIC
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
+#define FPS_FRAMES 500                  // after how many frames FPS is recomputed
 
 #include <stdio.h>
 #include <string>
@@ -64,7 +65,7 @@ char shader_vertex[] =
 "  uv_coordination = texture_coordination;                                                             \n"
 "  transformed_normal = normalize((world_matrix * vec4(normal, 0.0)).xyz);                                        \n"
 "                                                                                                      \n"
-"  if (textures == uint(2))                                                                            \n"
+"   if (textures == uint(2))                                                                            \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
 "                                                                                                      \n"
 "  if (fog_distance > 0) // fog enabled                                                                \n"
@@ -814,6 +815,14 @@ mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int res
    @return generated terrain mesh
    */
 
+float get_fps();
+  /**<
+   Returns current FPS. FPS is being recomputed after every FPS_FRAMES
+   frame.
+
+   @return current number of frames per second
+   */
+
 void set_global_light(point_3d direction, unsigned char red, unsigned char green, unsigned char blue);
   /**<
    Sets the global directional light parameters that will be used in
@@ -851,6 +860,10 @@ void (*user_keyboard_function)(int key, int x, int y) = NULL;      /// pointer t
 void (*user_advanced_keyboard_function)(bool key_up, int key, int x, int y) = NULL;
 float global_fov, global_near, global_far;                         /// perspective parameters
 float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
+
+int global_frame_counter = 0;                                      /// for FPS
+int global_last_time = 0;                                          /// for FPS
+float global_fps = 0;
 
 unsigned char global_background_color[3];                          /// background color of the viewport
 bool global_keyboard_state[512];                                   /// keeps the keyboard state (each ASCII character + special keys) for the advanced keyboard function
@@ -1185,6 +1198,19 @@ void loop_function()
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   user_render_function();
   global_previous_frame_time = glutGet(GLUT_ELAPSED_TIME);
+
+  if (global_frame_counter <= 0)      // recompute FPS
+      {
+        float ms_difference = get_time() - global_last_time;
+        float sec_difference = ms_difference / 1000.0;
+        global_fps = FPS_FRAMES / sec_difference;
+
+        global_frame_counter = FPS_FRAMES;
+        global_last_time = get_time();
+      }
+    else
+      global_frame_counter--;
+
   glutSwapBuffers();
 }
 
@@ -3281,6 +3307,14 @@ void set_background_color(unsigned char red, unsigned char green, unsigned char 
   glUniform3fv(background_color_location,1,(const GLfloat *) helper_array);
 
   glClearColor(helper_array[0],helper_array[1],helper_array[2],1.0);
+}
+
+//----------------------------------------------------------------------
+
+float get_fps()
+
+{
+  return global_fps;
 }
 
 //----------------------------------------------------------------------
