@@ -459,6 +459,16 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param iterations how many times the vertices will be merged
          */
 
+      void simplify(float ratio);
+        /**<
+         lowers the number of polygons, for more see
+         simplify(unsigned int).
+
+         @param ratio value in range <0,1> which says how much the mesh
+                should be simplified (e.g. 0.75 means that the new mesh
+                will be 75 % of the original)
+         */
+
       void make_instance_of(mesh_3d *what);
         /**<
          Makes this mesh an instance of another mesh (that means that
@@ -588,6 +598,13 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param z new scale in z direction
         */
 
+      void set_scale(float scale);
+        /**<
+         Sets the mesh scale.
+
+         @param scale new scale
+        */
+
       void get_position(point_3d *point);
         /**<
          Gets the object position.
@@ -649,7 +666,7 @@ class mesh_3d      /// a 3D mesh made of triangles
 
       void add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z);
         /**<
-         Adds a new verice to the mesh.
+         Adds a new vertex to the mesh.
 
          @param x x position of the vertice
          @param y y position of the vertice
@@ -659,6 +676,15 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param normal_x normal vector x, the normal will be automatically normalized
          @param normal_y normal vector y
          @param normal_z normal vector z
+        */
+
+      void add_vertex(float x, float y, float z);
+        /**<
+         Adds a new vertex to the mesh.
+
+         @param x x position of the vertice
+         @param y y position of the vertice
+         @param z z position of the vertice
         */
 
       void add_triangle(unsigned int index1, unsigned int index2, unsigned int index3);
@@ -3303,6 +3329,17 @@ void mesh_3d::simplify(unsigned int iterations)
 
 //----------------------------------------------------------------------
 
+void mesh_3d::simplify(float ratio)
+
+{
+  if (ratio > 1.0 || ratio < 0.0)
+    return;
+
+  this->simplify((unsigned int) (this->vertex_count() * (1.0 - ratio)));
+}
+
+//----------------------------------------------------------------------
+
 void camera_struct::set_skybox(mesh_3d *what)
 
 {
@@ -3353,6 +3390,14 @@ int get_frame_time_difference()
 
 {
   return glutGet(GLUT_ELAPSED_TIME) - global_previous_frame_time;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d::set_scale(float scale)
+
+{
+  this->set_scale(scale,scale,scale);
 }
 
 //----------------------------------------------------------------------
@@ -3457,6 +3502,14 @@ void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool aver
 
 //----------------------------------------------------------------------
 
+void mesh_3d::add_vertex(float x, float y, float z)
+
+{
+  this->add_vertex(x,y,z,0,0,0,0,1);
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z)
 
 {
@@ -3555,6 +3608,14 @@ texture_2d::~texture_2d()
 void normalize_vector(point_3d *vector)
 
 {
+  if (vector->x == 0 && vector->y == 0 && vector->z == 0)
+    {
+      vector->x = 1.0;
+      vector->y = 0.0;
+      vector->z = 0.0;
+      return;
+    }
+
   float length = vector_length(*vector);
 
   vector->x = vector->x / length;
