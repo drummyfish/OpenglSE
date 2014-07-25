@@ -34,6 +34,7 @@ to-do:
 - LOD (multiple meshes being switched depending on the distance)
 - text rendering
 - 2D image rendering
+- mesh and texture saving to obj and ppm
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple colision detection

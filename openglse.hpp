@@ -448,6 +448,17 @@ class mesh_3d      /// a 3D mesh made of triangles
                 otherwise not
          */
 
+      void simplify(unsigned int iterations);
+        /**<
+         lowers the number of polygons by successively merging vertices
+         with the shortest distance together. This is useful for example
+         for making simplified versions of the mesh for LOD. This method
+         is very simple and may take a lot of time for models with a lot
+         of triangles (a few thousand).
+
+         @param iterations how many times the vertices will be merged
+         */
+
       void make_instance_of(mesh_3d *what);
         /**<
          Makes this mesh an instance of another mesh (that means that
@@ -1031,6 +1042,20 @@ struct camera_struct                                                            
 //======================================================================
 // private function definitions:
 //======================================================================
+
+float get_distance(point_3d point1, point_3d point2)
+
+{
+  float dx,dy,dz;
+
+  dx = point1.x - point2.x;
+  dy = point1.y - point2.y;
+  dz = point1.z - point2.z;
+
+  return sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+//----------------------------------------------------------------------
 
 void print_matrix(float matrix[4][4])
   /**<
@@ -3243,6 +3268,41 @@ void mesh_3d::flip_triangles()
 
 //----------------------------------------------------------------------
 
+void mesh_3d::simplify(unsigned int iterations)
+
+{
+  unsigned int i,j,k,vertex1,vertex2;
+  float distance,min_distance;
+
+  for (i = 0; i < iterations; i++)
+    {
+      // find the 2 nearest vertices and merge them:
+
+      vertex1 = 0;
+      vertex2 = 1;
+      min_distance = numeric_limits<float>::max();
+
+      for (j = 0; j < this->vertices.size(); j++)
+        for (k = j + 1; k < this->vertices.size(); k++)
+          {
+            distance = get_distance(this->vertices[j].position,this->vertices[k].position);
+
+            if (distance < min_distance)
+              {
+                min_distance = distance;
+                vertex1 = j;
+                vertex2 = k;
+              }
+          }
+
+      this->merge_vertices(vertex1,vertex2,true);
+    }
+
+  this->remove_useless_triangles();
+}
+
+//----------------------------------------------------------------------
+
 void camera_struct::set_skybox(mesh_3d *what)
 
 {
@@ -3361,7 +3421,6 @@ void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool aver
   if (index1 == index2 || index1 >= this->vertices.size() || index2 >= this->vertices.size())
     return;
 
-
   if (average_position)
     {
       this->vertices[index1].position.x = (this->vertices[index1].position.x + this->vertices[index2].position.x) / 2.0;
@@ -3379,9 +3438,6 @@ void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool aver
 
   for (i = 0; i < this->triangles.size(); i++)
     {
-      cout << i << " " << this->triangles[i].index1 << " " << this->triangles[i].index2 << " " << this->triangles[i].index3 << endl;
-      cout << index2 << endl;
-
       if (this->triangles[i].index1 == index2)
         this->triangles[i].index1 = index1;
       else if (this->triangles[i].index1 > index2)
