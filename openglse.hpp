@@ -415,6 +415,12 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param mode mode to be set
          */
 
+      void remove_useless_triangles();
+        /**<
+         Removes all mesh triangles that have two or three same vertices
+         and thus serve no purpose.
+         */
+
       void merge_vertices(unsigned int index1, unsigned int index2, bool average_position);
         /**<
          Merges two vertices into one while preserving the mesh
@@ -937,7 +943,6 @@ struct camera_struct                                                            
   int key_rotate_z_ccw = 'x';
 
   void set_position(float x, float y, float z);
-
     /**<
      Sets the camera position to given point.
 
@@ -3163,6 +3168,23 @@ unsigned int mesh_3d::vertex_count()
 
 {
   return this->vertices.size();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d::remove_useless_triangles()
+
+{
+  unsigned int i;
+
+  for (i = 0; i < this->triangles.size(); i++)
+    if (this->triangles[i].index1 == this->triangles[i].index2 ||
+        this->triangles[i].index1 == this->triangles[i].index3 ||
+        this->triangles[i].index2 == this->triangles[i].index3)
+      {
+        this->triangles.erase(this->triangles.begin() + i);
+        i--;
+      }
 }
 
 //----------------------------------------------------------------------

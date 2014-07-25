@@ -35,5 +35,6 @@ to-do:
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)
+- generating volumetric meshes from 3D arrays of data
 - simple colision detection
 - basic mesh operations (vertex merging, decreasing polygon count etc.)
