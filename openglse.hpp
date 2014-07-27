@@ -10,6 +10,7 @@
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
 #define FPS_FRAMES 500                  // after how many frames FPS is recomputed
+#define MAX_ANIMATION_FRAMES 256
 
 #include <stdio.h>
 #include <string>
@@ -45,9 +46,7 @@ char shader_vertex[] =
 "uniform float far_plane;          // far plane distance      \n"
 "                                                             \n"
 "out vec2 uv_coordination;                                    \n"
-
 "out float texture_ratio;                                     \n"
-
 "out float final_intensity;      // computed from lighting    \n"
 "out vec3 transformed_normal;    // normal after object transformation \n"
 "out vec3 transformed_position;                               \n"
@@ -63,9 +62,9 @@ char shader_vertex[] =
 "  transformed_position = (world_matrix * vec4(position,1.0)).xyz;                                     \n"
 "  gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                    \n"
 "  uv_coordination = texture_coordination;                                                             \n"
-"  transformed_normal = normalize((world_matrix * vec4(normal, 0.0)).xyz);                                        \n"
+"  transformed_normal = normalize((world_matrix * vec4(normal, 0.0)).xyz);                             \n"
 "                                                                                                      \n"
-"   if (textures == uint(2))                                                                            \n"
+"   if (textures == uint(2))                                                                           \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
 "                                                                                                      \n"
 "  if (fog_distance > 0) // fog enabled                                                                \n"
@@ -214,6 +213,8 @@ typedef struct     /// a triangle in 3D space
     unsigned int index3;
   } triangle_3d;
 
+//------------------------------------
+
 class texture_2d   /// represents a texture, it's x and y size must be power of 2
   {
     protected:
@@ -353,11 +354,11 @@ class texture_2d   /// represents a texture, it's x and y size must be power of 
          */
   };
 
-class mesh_3d      /// a 3D mesh made of triangles
+//------------------------------------
+
+class mesh_3d      /// an sbstract class of 3D mesh made of triangles
   {
     protected:
-      GLuint vbo;          /// the mesh's virtual buffer object handle
-      GLuint ibo;          /// the mesh's index buffer object handle
       point_3d position;
       point_3d rotation;   /// the object's rotation in angles, x, y and z are roll, pitch and yaw
       point_3d scale;
@@ -367,7 +368,6 @@ class mesh_3d      /// a 3D mesh made of triangles
       unsigned int color[3];   /// RGB mesh color that's used when the mesh doesn't have any texture
       float color_float[3];    /// mesh RGB color in range <0,1>
       render_mode mesh_render_mode;         /// determines how the model will be rendered
-      mesh_3d *instance_parent;             /// if this object is an instance of another mesh, this points to it
 
       float material_ambient_intensity;     /// in range <0,1>, affects how much ambient light is reflected
       float material_diffuse_intensity;     /// in range <0,1>, affects how much diffuse light is reflected
@@ -386,25 +386,14 @@ class mesh_3d      /// a 3D mesh made of triangles
         */
 
     public:
-      vector<vertex_3d> vertices;
-      vector<triangle_3d> triangles;
-
       mesh_3d();
         /**<
          Class constructor.
         */
 
-      ~mesh_3d();
+      virtual ~mesh_3d() = 0;
         /**<
          Class destructor, frees all the object's memory.
-         */
-
-      bool load_obj(string filename);
-        /**<
-         Loads the mesh from obj file format.
-
-         @param filename file to be loaded
-         @return true if everything went OK, false otherwise
          */
 
       void set_render_mode(render_mode mode);
@@ -413,30 +402,6 @@ class mesh_3d      /// a 3D mesh made of triangles
          be rendered).
 
          @param mode mode to be set
-         */
-
-      void remove_useless_triangles();
-        /**<
-         Removes all mesh triangles that have two or three same vertices
-         and thus serve no purpose.
-         */
-
-      void merge_vertices(unsigned int index1, unsigned int index2, bool average_position);
-        /**<
-         Merges two vertices into one while preserving the mesh
-         triangles (their indices will be recomputed).
-
-         @param index1 index of the first vertex to be merged
-         @param index2 index of the second vertex to be merged
-         @param average_position if true, the new vertex will be placed
-                at average position of both vertices, otherwise the
-                second vertex (index2) will be merged into the first one
-         */
-
-      void flip_triangles();
-        /**<
-         Flips the vertex triangles and normals (so that they're facing
-         the other way).
          */
 
       void set_use_fog(bool enable);
@@ -448,54 +413,14 @@ class mesh_3d      /// a 3D mesh made of triangles
                 otherwise not
          */
 
-      void simplify(unsigned int iterations);
-        /**<
-         lowers the number of polygons by successively merging vertices
-         with the shortest distance together. This is useful for example
-         for making simplified versions of the mesh for LOD. This method
-         is very simple and may take a lot of time for models with a lot
-         of triangles (a few thousand).
-
-         @param iterations how many times the vertices will be merged
-         */
-
-      void simplify(float ratio);
-        /**<
-         lowers the number of polygons, for more see
-         simplify(unsigned int).
-
-         @param ratio value in range <0,1> which says how much the mesh
-                should be simplified (e.g. 0.75 means that the new mesh
-                will be 75 % of the original)
-         */
-
-      void make_instance_of(mesh_3d *what);
-        /**<
-         Makes this mesh an instance of another mesh (that means that
-         this mesh will use the other meshe's vertex data stored in GPU
-         memory.) The vertex data of this mesh will be deleted by
-         calling this method.
-
-         @param what mesh of which this mesh will become an instance
-         */
-
-      void get_vbo_ibo(GLuint *vbo, GLuint *ibo);
-        /**<
-         Gets the VBO (vertex buffer object) and IBO (index buffer object)
-         handles.
-
-         @param vbo in this vriable VBO handle will be returned
-         @param ibo in this vriable IBO handle will be returned
-         */
-
-      unsigned int vertex_count();
+      virtual unsigned int vertex_count() = 0;
         /**<
          Gets the mesh vertex count.
 
          @return number of vertices of the mesh
          */
 
-      unsigned int triangle_count();
+      virtual unsigned int triangle_count() = 0;
         /**<
          Gets the mesh triangle count.
 
@@ -509,7 +434,7 @@ class mesh_3d      /// a 3D mesh made of triangles
          @return current render mode
          */
 
-      void clear();
+      virtual void clear() = 0;
         /**<
          Restores the mesh to the state as if it was just initialised.
          */
@@ -522,25 +447,6 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param red amount of red
          @param green amount of green
          @param blue amount of blue
-         */
-
-      void texture_map_plane(axis_direction direction, float plane_width, float plane_height);
-        /**<
-         Maps the texture coordinations of the vertices using planar mapping.
-
-         @param direction direction of the plane normal
-         @param plane_width width of the plane
-         @param plena_height height of the plane
-         */
-
-      void texture_map_layer_mask(texture_2d *mask);
-        /**<
-         Maps a mask defining texture layers blend. This information is
-         encoded into mesh vertices. The mapping is done depending on
-         vertices x and z position.
-
-         @param mask gryscale blend mask (only red component is taken
-                into account)
          */
 
       void set_lighting_properties(float ambient, float diffuse, float specular, float specular_exponent);
@@ -626,6 +532,129 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param point in this variable the object rotation will be returned
         */
 
+      virtual void update() = 0;
+        /**<
+         This should be called if the models vertices or triangles have
+         changed to reupload the model to the GPU. There's no need to
+         call this method when position, rotation or scale of the model
+         have been changed. This method doesn nothing if the mesh is an
+         instance of another mesh.
+        */
+
+      virtual void draw() = 0;
+        /**<
+         Draws the model.
+        */
+
+      virtual void print_data() = 0;
+        /**<
+         Debugging purposes method, prints the model's vertices and
+         triangles to stdout.
+         */
+  };
+
+//------------------------------------
+
+class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
+  {
+    protected:
+      GLuint vbo;          /// the mesh's virtual buffer object handle
+      GLuint ibo;          /// the mesh's index buffer object handle
+      mesh_3d *instance_parent;             /// if this object is an instance of another mesh, this points to it
+
+    public:
+      vector<vertex_3d> vertices;
+      vector<triangle_3d> triangles;
+
+      mesh_3d_static();
+        /**<
+         Class constructor.
+        */
+
+      virtual ~mesh_3d_static();
+        /**<
+         Class destructor, frees all the object's memory.
+         */
+
+      void make_instance_of(mesh_3d_static *what);
+        /**<
+         Makes this mesh an instance of another mesh (that means that
+         this mesh will use the other meshe's vertex data stored in GPU
+         memory.) The vertex data of this mesh will be deleted by
+         calling this method.
+
+         @param what mesh of which this mesh will become an instance
+         */
+
+      virtual unsigned int vertex_count();
+      virtual void print_data();
+      virtual unsigned int triangle_count();
+      virtual void update();
+      virtual void draw();
+      virtual void clear();
+
+      void add_triangle(unsigned int index1, unsigned int index2, unsigned int index3);
+        /**<
+         Adds a new triangle indices to the mesh.
+
+         @param index1 first index of the triangle
+         @param index2 second index of the triangle
+         @param index3 third index of the triangle
+        */
+
+      void remove_useless_triangles();
+        /**<
+         Removes all mesh triangles that have two or three same vertices
+         and thus serve no purpose.
+         */
+
+      void merge_vertices(unsigned int index1, unsigned int index2, bool average_position);
+        /**<
+         Merges two vertices into one while preserving the mesh
+         triangles (their indices will be recomputed).
+
+         @param index1 index of the first vertex to be merged
+         @param index2 index of the second vertex to be merged
+         @param average_position if true, the new vertex will be placed
+                at average position of both vertices, otherwise the
+                second vertex (index2) will be merged into the first one
+         */
+
+      void flip_triangles();
+        /**<
+         Flips the vertex triangles and normals (so that they're facing
+         the other way).
+         */
+
+      bool load_obj(string filename);
+        /**<
+         Loads the mesh from obj file format.
+
+         @param filename file to be loaded
+         @return true if everything went OK, false otherwise
+         */
+
+      void simplify(float ratio);
+        /**<
+         lowers the number of polygons, for more see
+         simplify(unsigned int).
+
+         @param ratio value in range <0,1> which says how much the mesh
+                should be simplified (e.g. 0.75 means that the new mesh
+                will be 75 % of the original)
+         */
+
+      void simplify(unsigned int iterations);
+        /**<
+         lowers the number of polygons by successively merging vertices
+         with the shortest distance together. This is useful for example
+         for making simplified versions of the mesh for LOD. This method
+         is very simple and may take a lot of time for models with a lot
+         of triangles (a few thousand).
+
+         @param iterations how many times the vertices will be merged
+         */
+
       void get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1);
         /**<
          Returns the model bounding box (in model space).
@@ -638,19 +667,33 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param z1 z coordination of the second point
          */
 
-      void update();
+      void get_vbo_ibo(GLuint *vbo, GLuint *ibo);
         /**<
-         This should be called if the models vertices or triangles have
-         changed to reupload the model to the GPU. There's no need to
-         call this method when position, rotation or scale of the model
-         have been changed. This method doesn nothing if the mesh is an
-         instance of another mesh.
-        */
+         Gets the VBO (vertex buffer object) and IBO (index buffer object)
+         handles.
 
-      void draw();
+         @param vbo in this vriable VBO handle will be returned
+         @param ibo in this vriable IBO handle will be returned
+         */
+
+      void texture_map_plane(axis_direction direction, float plane_width, float plane_height);
         /**<
-         Draws the model.
-        */
+         Maps the texture coordinations of the vertices using planar mapping.
+
+         @param direction direction of the plane normal
+         @param plane_width width of the plane
+         @param plena_height height of the plane
+         */
+
+      void texture_map_layer_mask(texture_2d *mask);
+        /**<
+         Maps a mask defining texture layers blend. This information is
+         encoded into mesh vertices. The mapping is done depending on
+         vertices x and z position.
+
+         @param mask gryscale blend mask (only red component is taken
+                into account)
+         */
 
       void smooth_normals();
         /**<
@@ -658,11 +701,14 @@ class mesh_3d      /// a 3D mesh made of triangles
          and averaging them so the mesh will appear smooth.
          */
 
-      void print_data();
+      void add_vertex(float x, float y, float z);
         /**<
-         Debugging purposes method, prints the model's vertices and
-         triangles to stdout.
-         */
+         Adds a new vertex to the mesh.
+
+         @param x x position of the vertice
+         @param y y position of the vertice
+         @param z z position of the vertice
+        */
 
       void add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z);
         /**<
@@ -678,24 +724,6 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param normal_z normal vector z
         */
 
-      void add_vertex(float x, float y, float z);
-        /**<
-         Adds a new vertex to the mesh.
-
-         @param x x position of the vertice
-         @param y y position of the vertice
-         @param z z position of the vertice
-        */
-
-      void add_triangle(unsigned int index1, unsigned int index2, unsigned int index3);
-        /**<
-         Adds a new triangle indices to the mesh.
-
-         @param index1 first index of the triangle
-         @param index2 second index of the triangle
-         @param index3 third index of the triangle
-        */
-
       void apply_matrix(float matrix[4][4]);
         /**<
          Applies a transformation matrix to all the vertices of the
@@ -706,6 +734,20 @@ class mesh_3d      /// a 3D mesh made of triangles
          @param matrix transformation matrix to be applies
         */
   };
+
+//------------------------------------
+
+class mesh_3d_animated: public mesh_3d
+  {
+    protected:
+      GLuint vbos[MAX_ANIMATION_FRAMES];
+      GLuint ibos[MAX_ANIMATION_FRAMES];
+      unsigned int frames;
+
+    public:
+  };
+
+//------------------------------------
 
 void draw_pixel(unsigned int x, unsigned int y, unsigned char r, unsigned char g, unsigned char b, unsigned char a);
   /**<
@@ -794,7 +836,7 @@ float vector_length(point_3d vector);
    @return vector length
    */
 
-mesh_3d *make_cuboid(float side_x, float side_y, float side_z);
+mesh_3d_static *make_cuboid(float side_x, float side_y, float side_z);
   /**<
    Makes a cuboid (box) mesh.
 
@@ -804,7 +846,7 @@ mesh_3d *make_cuboid(float side_x, float side_y, float side_z);
    @return instance of the cuboid mesh
    */
 
-mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z);
+mesh_3d_static *make_sharp_cuboid(float side_x, float side_y, float side_z);
   /**<
    Makes sharp-edged cuboid (box) mesh. It consists of 6 faces that don't
    share vertices, so that the edges can be sharp and can have independent
@@ -816,7 +858,7 @@ mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z);
    @return instance of the cuboid mesh
    */
 
-mesh_3d *make_plane(float width, float height, unsigned int resolution_x, unsigned int resolution_y);
+mesh_3d_static *make_plane(float width, float height, unsigned int resolution_x, unsigned int resolution_y);
   /**<
    Makes a plane mesh.
 
@@ -827,7 +869,7 @@ mesh_3d *make_plane(float width, float height, unsigned int resolution_x, unsign
    @return instance of the plane mesh
    */
 
-mesh_3d *make_cone(float radius, float height, unsigned int sides);
+mesh_3d_static *make_cone(float radius, float height, unsigned int sides);
   /**<
    Makes a cone mesh.
 
@@ -837,7 +879,7 @@ mesh_3d *make_cone(float radius, float height, unsigned int sides);
    @return instance of the cone mesh
    */
 
-mesh_3d *make_cylinder(float radius, float height, unsigned int sides);
+mesh_3d_static *make_cylinder(float radius, float height, unsigned int sides);
   /**<
    Makes a cylinder mesh.
 
@@ -847,7 +889,7 @@ mesh_3d *make_cylinder(float radius, float height, unsigned int sides);
    @return instance of the cylinder mesh
    */
 
-mesh_3d *make_sphere(float radius, unsigned int height_segments, unsigned int sides);
+mesh_3d_static *make_sphere(float radius, unsigned int height_segments, unsigned int sides);
   /**<
    Makes a sphere mesh.
 
@@ -857,7 +899,7 @@ mesh_3d *make_sphere(float radius, unsigned int height_segments, unsigned int si
    @return instance of the sphere mesh
    */
 
-mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap);
+mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap);
   /**<
    Makes a terrain mesh based on heightmap stored as image in texture.
 
@@ -1845,10 +1887,10 @@ void texture_2d::get_transparent_color_float(float *red, float *green, float *bl
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_cuboid(float side_x, float side_y, float side_z)
+mesh_3d_static *make_cuboid(float side_x, float side_y, float side_z)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   double half_x, half_y, half_z;
 
@@ -1887,10 +1929,10 @@ mesh_3d *make_cuboid(float side_x, float side_y, float side_z)
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z)
+mesh_3d_static *make_sharp_cuboid(float side_x, float side_y, float side_z)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   double half_x, half_y, half_z;
 
@@ -1960,10 +2002,10 @@ mesh_3d *make_sharp_cuboid(float side_x, float side_y, float side_z)
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_plane(float width, float height, unsigned int resolution_x, unsigned int resolution_y)
+mesh_3d_static *make_plane(float width, float height, unsigned int resolution_x, unsigned int resolution_y)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   unsigned int i,j;
   float step_x,step_y,half_width,half_height;
@@ -2012,10 +2054,10 @@ unsigned int texture_2d::get_height()
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap)
+mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap)
 
 {
-  mesh_3d *result;
+  mesh_3d_static *result;
   float matrix[4][4];
   unsigned int i,index;
   unsigned char r,g,b;
@@ -2077,10 +2119,10 @@ mesh_3d *make_terrain(float size_x, float size_y, float height, unsigned int res
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_cone(float radius, float height, unsigned int sides)
+mesh_3d_static *make_cone(float radius, float height, unsigned int sides)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   result->add_vertex(0,0,0,0,0,0,-1,0);         // bottom
   result->add_vertex(0,height,0,0.5,1,0,1,0);   // top
@@ -2119,10 +2161,10 @@ mesh_3d *make_cone(float radius, float height, unsigned int sides)
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_sphere(float radius, unsigned int height_segments, unsigned int sides)
+mesh_3d_static *make_sphere(float radius, unsigned int height_segments, unsigned int sides)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   result->add_vertex(0,-1 * radius,0,0.5,0.5,0,-1,0);  // bottom vertex
   result->add_vertex(0,radius,0,0.5,0.5,0,1,0);        // top vertex
@@ -2186,10 +2228,10 @@ mesh_3d *make_sphere(float radius, unsigned int height_segments, unsigned int si
 
 //----------------------------------------------------------------------
 
-mesh_3d *make_cylinder(float radius, float height, unsigned int sides)
+mesh_3d_static *make_cylinder(float radius, float height, unsigned int sides)
 
 {
-  mesh_3d *result = new mesh_3d;
+  mesh_3d_static *result = new mesh_3d_static;
 
   result->add_vertex(0,0,0,0,0,0,-1,0);
   result->add_vertex(0,height,0,0,0,0,1,0);
@@ -2237,7 +2279,7 @@ mesh_3d *make_cylinder(float radius, float height, unsigned int sides)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::apply_matrix(float matrix[4][4])
+void mesh_3d_static::apply_matrix(float matrix[4][4])
 
 {
   unsigned int i;
@@ -2390,7 +2432,7 @@ bool texture_2d::load_ppm(string filename)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::smooth_normals()
+void mesh_3d_static::smooth_normals()
 
 {
   vector<point_3d> triangle_normals;  // normals for each triangle
@@ -2460,7 +2502,7 @@ void mesh_3d::smooth_normals()
 
 //----------------------------------------------------------------------
 
-bool mesh_3d::load_obj(string filename)
+bool mesh_3d_static::load_obj(string filename)
 
 {
   ifstream obj_file(filename.c_str());
@@ -2698,7 +2740,7 @@ int get_time()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::texture_map_plane(axis_direction direction, float plane_width, float plane_height)
+void mesh_3d_static::texture_map_plane(axis_direction direction, float plane_width, float plane_height)
 
 {
   unsigned int i;
@@ -2759,7 +2801,7 @@ void mesh_3d::texture_map_plane(axis_direction direction, float plane_width, flo
 
 //----------------------------------------------------------------------
 
-void mesh_3d::texture_map_layer_mask(texture_2d *mask)
+void mesh_3d_static::texture_map_layer_mask(texture_2d *mask)
 
 {
   unsigned int i;
@@ -2823,7 +2865,7 @@ void mesh_3d::set_position(float x, float y, float z)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::clear()
+void mesh_3d_static::clear()
 
 {
   this->vertices.clear();
@@ -2832,7 +2874,7 @@ void mesh_3d::clear()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::make_instance_of(mesh_3d *what)
+void mesh_3d_static::make_instance_of(mesh_3d_static *what)
 
 {
   GLuint what_vbo,what_ibo;
@@ -2915,7 +2957,7 @@ void set_perspective(float fov_degrees, float near_plane, float far_plane)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::get_vbo_ibo(GLuint *vbo, GLuint *ibo)
+void mesh_3d_static::get_vbo_ibo(GLuint *vbo, GLuint *ibo)
 
 {
   *vbo = this->vbo;
@@ -2927,11 +2969,8 @@ void mesh_3d::get_vbo_ibo(GLuint *vbo, GLuint *ibo)
 mesh_3d::mesh_3d()
 
 {
-  this->vbo = 0;
-  this->ibo = 0;
   this->texture = NULL;
   this->texture2 = NULL;
-  this->instance_parent = NULL;
 
   this->set_color(255,255,255);
 
@@ -2942,6 +2981,16 @@ mesh_3d::mesh_3d()
   this->set_scale(1,1,1);
   this->set_render_mode(RENDER_MODE_SHADED_GORAUD);
   this->use_fog = true;
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d_static::mesh_3d_static(): mesh_3d()
+
+{
+  this->vbo = 0;
+  this->ibo = 0;
+  this->instance_parent = NULL;
 }
 
 //----------------------------------------------------------------------
@@ -2972,7 +3021,7 @@ void mesh_3d::set_texture2(texture_2d *texture)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::update()
+void mesh_3d_static::update()
 
 {
   if (this->instance_parent != NULL)
@@ -3071,7 +3120,7 @@ void camera_struct::handle_fps()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::draw()
+void mesh_3d_static::draw()
 
 {
   unsigned int number_of_triangles;
@@ -3215,7 +3264,7 @@ void set_fog(float distance)
 
 //----------------------------------------------------------------------
 
-unsigned int mesh_3d::vertex_count()
+unsigned int mesh_3d_static::vertex_count()
 
 {
   return this->vertices.size();
@@ -3223,7 +3272,7 @@ unsigned int mesh_3d::vertex_count()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::remove_useless_triangles()
+void mesh_3d_static::remove_useless_triangles()
 
 {
   unsigned int i;
@@ -3240,7 +3289,7 @@ void mesh_3d::remove_useless_triangles()
 
 //----------------------------------------------------------------------
 
-unsigned int mesh_3d::triangle_count()
+unsigned int mesh_3d_static::triangle_count()
 
 {
   return this->triangles.size();
@@ -3270,7 +3319,7 @@ void texture_2d::get_pixel(int x, int y, unsigned char *red, unsigned char *gree
 
 //----------------------------------------------------------------------
 
-void mesh_3d::flip_triangles()
+void mesh_3d_static::flip_triangles()
 
 {
   unsigned int i, helper_index;
@@ -3294,7 +3343,7 @@ void mesh_3d::flip_triangles()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::simplify(unsigned int iterations)
+void mesh_3d_static::simplify(unsigned int iterations)
 
 {
   unsigned int i,j,k,vertex1,vertex2;
@@ -3329,7 +3378,7 @@ void mesh_3d::simplify(unsigned int iterations)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::simplify(float ratio)
+void mesh_3d_static::simplify(float ratio)
 
 {
   if (ratio > 1.0 || ratio < 0.0)
@@ -3350,7 +3399,7 @@ void camera_struct::set_skybox(mesh_3d *what)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1)
+void mesh_3d_static::get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1)
 
 {
   unsigned int i;
@@ -3402,7 +3451,7 @@ void mesh_3d::set_scale(float scale)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::print_data()
+void mesh_3d_static::print_data()
 
 {
   unsigned int i;
@@ -3458,7 +3507,7 @@ float get_fps()
 
 //----------------------------------------------------------------------
 
-void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool average_position)
+void mesh_3d_static::merge_vertices(unsigned int index1, unsigned int index2, bool average_position)
 
 {
   unsigned int i;
@@ -3502,7 +3551,7 @@ void mesh_3d::merge_vertices(unsigned int index1, unsigned int index2, bool aver
 
 //----------------------------------------------------------------------
 
-void mesh_3d::add_vertex(float x, float y, float z)
+void mesh_3d_static::add_vertex(float x, float y, float z)
 
 {
   this->add_vertex(x,y,z,0,0,0,0,1);
@@ -3510,7 +3559,7 @@ void mesh_3d::add_vertex(float x, float y, float z)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z)
+void mesh_3d_static::add_vertex(float x, float y, float z, float texture_u, float texture_v, float normal_x, float normal_y, float normal_z)
 
 {
   vertex_3d vertex;
@@ -3543,7 +3592,7 @@ void mesh_3d::set_render_mode(render_mode mode)
 
 //----------------------------------------------------------------------
 
-void mesh_3d::add_triangle(unsigned int index1, unsigned int index2, unsigned int index3)
+void mesh_3d_static::add_triangle(unsigned int index1, unsigned int index2, unsigned int index3)
 
 {
   triangle_3d triangle;
@@ -3575,6 +3624,13 @@ void draw_pixel(unsigned int x, unsigned int y, unsigned char r, unsigned char g
 //----------------------------------------------------------------------
 
 mesh_3d::~mesh_3d()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d_static::~mesh_3d_static()
 
 {
   if (this->vbo != 0)

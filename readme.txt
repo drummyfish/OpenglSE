@@ -9,7 +9,7 @@ implemented features:
 - per-mesh rendering modes: no shading (good for skyboxes etc.), Goraud (per-vertex) shading, Phong (per-pixel) shading, wireframe
 - basic ligting (one global directional light)
 - simple material variables (have impact on lighting of the mesh)
-- basic primitive generating: box, sphere, plane, cyllinder, cone
+- basic primitive generation: box, sphere, plane, cyllinder, cone
 - texture loading from PPM file format
 - interface to modify the texture pixel data
 - 3D mesh loading from OBJ file format
@@ -26,6 +26,7 @@ implemented features:
 - possibility to turn off fog for specific objects (e.g. sky box)
 - instancing (sharing mesh data on GPU)
 - texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
+- basic mesh operations (vertex merging, decreasing polygon count etc.)
 
 to-do:
 - very simple shadows (dark blobs underneath objects)
@@ -37,5 +38,4 @@ to-do:
 - mesh and texture saving to obj and ppm
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
-- simple colision detection
-- basic mesh operations (vertex merging, decreasing polygon count etc.)
+- simple collision detection
