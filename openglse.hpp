@@ -10,7 +10,7 @@
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
 #define FPS_FRAMES 500                  // after how many frames FPS is recomputed
-#define MAX_ANIMATION_FRAMES 256
+#define MAX_ANIMATION_FRAMES 32
 
 #include <stdio.h>
 #include <string>
@@ -206,12 +206,21 @@ typedef struct     /// a vertice in 3D space
     float texture_blend_ratio;      /// for texture blending
   } vertex_3d;
 
-typedef struct     /// a triangle in 3D space
+typedef struct     /// a triangle represented as three vertex indices
   {
     unsigned int index1;
     unsigned int index2;
     unsigned int index3;
   } triangle_3d;
+
+typedef struct     /// an animation frame
+  {
+    GLuint vbo;
+    GLuint ibo;
+    vector<vertex_3d> vertices;
+    vector<triangle_3d> triangles;
+    unsigned int length_ms;         /// frame length in milliseconds
+  } animation_frame;
 
 //------------------------------------
 
@@ -740,11 +749,64 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
 class mesh_3d_animated: public mesh_3d
   {
     protected:
-      GLuint vbos[MAX_ANIMATION_FRAMES];
-      GLuint ibos[MAX_ANIMATION_FRAMES];
-      unsigned int frames;
+      bool playing;
+      bool loop;                   /// whether the animation should loop
+      float play_speed;
+      int current_frame;           /// current frame number
+      float frame_percentage;      /// percentage played of the current frame
 
     public:
+      vector<animation_frame> frames;
+
+      mesh_3d_animated();
+        /**<
+         Class constructor.
+         */
+
+      virtual ~mesh_3d_animated();
+        /**<
+         Class destructor, frees all the object's memory.
+         */
+
+      void set_speed(float speed);
+        /**<
+         Sets the play speed of the animation.
+
+         @param speed speed at which the animation should be played (1.0
+                is normal)
+         */
+
+      unsigned int get_number_of_frames();
+        /**<
+         Returns number of animation frames.
+
+         @return number of frames
+         */
+
+      void add_frame(mesh_3d_static *mesh, unsigned int length);
+        /**<
+         Makes a new frame out of 3D mesh and appends it to the frame
+         list.
+
+         @param mesh mesh whose vertex and triangle data will be used to
+                make the frame
+         @param length length of the frame in milliseconds
+         */
+
+      void set_playing(bool play);
+        /**<
+         Makes the animation play or stop.
+
+         @param play if true, the animation will start to play, otherwise
+                it will stop
+         */
+
+      virtual unsigned int vertex_count();
+      virtual void print_data();
+      virtual unsigned int triangle_count();
+      virtual void update();
+      virtual void clear();
+      virtual void draw();
   };
 
 //------------------------------------
@@ -3685,6 +3747,183 @@ float vector_length(point_3d vector)
 
 {
   return sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d_animated::mesh_3d_animated(): mesh_3d()
+
+{
+  this->playing = false;
+  this->loop = true;
+  this->play_speed = 1.0;
+  this->current_frame = 0;
+  this->frame_percentage = 0.0;
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d_animated::~mesh_3d_animated()
+
+{
+  unsigned int i;
+
+  for (i = 0; i < this->frames.size(); i++)
+    {
+      if (this->frames[i].vbo != 0)
+        glDeleteBuffers(1,&this->frames[i].vbo);
+
+      if (this->frames[i].ibo != 0)
+        glDeleteBuffers(1,&this->frames[i].ibo);
+    }
+}
+
+//----------------------------------------------------------------------
+
+unsigned int mesh_3d_animated::get_number_of_frames()
+
+{
+  return this->frames.size();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::add_frame(mesh_3d_static *mesh, unsigned int length)
+
+{
+  animation_frame frame;
+  vertex_3d vertex;
+  triangle_3d triangle;
+  unsigned int i;
+
+  glGenBuffers(1,&frame.vbo);
+  glGenBuffers(1,&frame.ibo);
+  frame.length_ms = length;
+
+  for (i = 0; i < mesh->vertex_count(); i++)
+    {
+      vertex.position.x = mesh->vertices[i].position.x;
+      vertex.position.y = mesh->vertices[i].position.y;
+      vertex.position.z = mesh->vertices[i].position.z;
+      vertex.normal.x = mesh->vertices[i].normal.x;
+      vertex.normal.y = mesh->vertices[i].normal.y;
+      vertex.normal.z = mesh->vertices[i].normal.z;
+      vertex.texture_coordination[0] = mesh->vertices[i].texture_coordination[0];
+      vertex.texture_coordination[1] = mesh->vertices[i].texture_coordination[1];
+
+      frame.vertices.push_back(vertex);
+    }
+
+  for (i = 0; i < mesh->triangle_count(); i++)
+    {
+      triangle.index1 = mesh->triangles[i].index1;
+      triangle.index2 = mesh->triangles[i].index2;
+      triangle.index3 = mesh->triangles[i].index3;
+
+      frame.triangles.push_back(triangle);
+    }
+
+  this->frames.push_back(frame);
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::set_playing(bool play)
+
+{
+  this->playing = play;
+}
+
+//----------------------------------------------------------------------
+
+unsigned int mesh_3d_animated::vertex_count()
+
+{
+  return this->frames.size() == 0 ? 0 : this->frames[0].vertices.size();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::print_data()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+unsigned int mesh_3d_animated::triangle_count()
+
+{
+  return this->frames.size() == 0 ? 0 : this->frames[0].triangles.size();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::update()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::clear()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::set_speed(float speed)
+
+{
+  this->play_speed = speed;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::draw()
+
+{
+  if (this->frames.size() == 0)
+    return;
+
+  this->frame_percentage += this->play_speed * (get_frame_time_difference() / ((float) this->frames[this->current_frame].length_ms));
+
+  while (this->frame_percentage > 1.0)
+    {
+      this->current_frame++;
+      this->frame_percentage -= 1.0;
+
+      if (this->current_frame >= (int) this->frames.size())
+        {
+          this->current_frame = 0;
+
+          if (!this->loop)
+            {
+              this->set_playing(false);
+              this->frame_percentage = 0.0;
+              break;
+            }
+        }
+    }
+
+  while (this->frame_percentage < 0.0)
+    {
+      this->current_frame--;
+      this->frame_percentage += 1.0;
+
+      if (this->current_frame < 0)
+        {
+          this->current_frame = this->frames.size() - 1;
+
+          if (!this->loop)
+            {
+              this->set_playing(false);
+              this->frame_percentage = 0.0;
+              break;
+            }
+        }
+    }
 }
 
 //----------------------------------------------------------------------
