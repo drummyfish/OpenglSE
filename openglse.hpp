@@ -31,15 +31,12 @@ char shader_vertex[] =
 "layout (location = 1) in vec2 texture_coordination;          \n"
 "layout (location = 2) in vec3 normal;                        \n"
 "layout (location = 3) in float texture_blend_ratio;          \n"
-
 "layout (location = 4) in vec3 position2;                     \n"
 "layout (location = 5) in vec2 texture_coordination2;         \n"
 "layout (location = 6) in vec3 normal2;                       \n"
 "layout (location = 7) in float texture_blend_ratio2;         \n"
-
-"uniform float frame_percentage;        // for animation, if < 0, no animation is used \n"
-
 "                                                             \n"
+"uniform float frame_percentage;        // for animation, if < 0, no animation is used \n"
 "uniform mat4 perspective_matrix;                             \n"
 "uniform mat4 world_matrix;                                   \n"
 "uniform mat4 view_matrix;                                    \n"
@@ -69,22 +66,19 @@ char shader_vertex[] =
 "void main()                                                  \n"
 "{                                                            \n"
 
-"  if (frame_percentage >= 0) {                                \n"
-"    transformed_position = mix(position,position2,frame_percentage); \n"
+"  if (frame_percentage >= 0) {                               \n"
+"    transformed_position = mix(position,position2,frame_percentage);    \n"
 "    transformed_normal = mix(normal,normal2,frame_percentage);          \n"
-"    uv_coordination = mix(texture_coordination,texture_coordination2,frame_percentage);              \n"
-"    texture_ratio = mix(texture_blend_ratio,texture_blend_ratio2,frame_percentage); }          \n"
+"    uv_coordination = mix(texture_coordination,texture_coordination2,frame_percentage);  \n"
+"    texture_ratio = mix(texture_blend_ratio,texture_blend_ratio2,frame_percentage); }    \n"
 "  else {"
-"    transformed_position = position; \n"
-"    transformed_normal = normal; } \n"
-"     \n"
-
-""
-
+"    transformed_position = position;                         \n"
+"    transformed_normal = normal; }                           \n"
+"                                                             \n"
 "  transformed_position = (world_matrix * vec4(transformed_position,1.0)).xyz;                         \n"
 "  gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                    \n"
 "  uv_coordination = texture_coordination;                                                             \n"
-"  transformed_normal = normalize((world_matrix * vec4(transformed_normal,0.0)).xyz);                             \n"
+"  transformed_normal = normalize((world_matrix * vec4(transformed_normal,0.0)).xyz);                  \n"
 "                                                                                                      \n"
 "   if (textures == uint(2))                                                                           \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
@@ -773,6 +767,7 @@ class mesh_3d_animated: public mesh_3d
     protected:
       bool playing;
       bool loop;                   /// whether the animation should loop
+      bool interpolating;          /// whether frame interpolation or just switching is used
       float play_speed;
       int current_frame;           /// current frame number
       float frame_percentage;      /// percentage played of the current frame
@@ -796,6 +791,14 @@ class mesh_3d_animated: public mesh_3d
 
          @param speed speed at which the animation should be played (1.0
                 is normal)
+         */
+
+      void use_interpolation(bool interpolate);
+        /**<
+         Sets the frame interpolation on or off.
+
+         @param interpolate if true, interpolation between frames will be
+                used, otherwise the frames will just be switched
          */
 
       unsigned int get_number_of_frames();
@@ -3781,9 +3784,18 @@ mesh_3d_animated::mesh_3d_animated(): mesh_3d()
 {
   this->playing = false;
   this->loop = true;
+  this->interpolating = true;
   this->play_speed = 1.0;
   this->current_frame = 0;
   this->frame_percentage = 0.0;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::use_interpolation(bool interpolate)
+
+{
+  this->interpolating = interpolate;
 }
 
 //----------------------------------------------------------------------
@@ -4022,7 +4034,7 @@ void mesh_3d_animated::draw()
   glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
   glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
-  glUniform1f(frame_percentage_location,(GLfloat) this->frame_percentage);
+  glUniform1f(frame_percentage_location,(GLfloat) (this->interpolating ? this->frame_percentage : 0.0));
   glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
   glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
   glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
