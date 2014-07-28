@@ -27,10 +27,10 @@ implemented features:
 - instancing (sharing mesh data on GPU)
 - texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
 - basic mesh operations (vertex merging, decreasing polygon count etc.)
+- basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
 
 to-do:
 - very simple shadows (dark blobs underneath objects)
-- basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
 - mouse input handling
 - LOD (multiple meshes being switched depending on the distance)
 - text rendering
