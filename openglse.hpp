@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string>
 #include <vector>
+#include <iomanip>
 #include <iostream>
 #include <fstream>
 #include <limits>
@@ -30,6 +31,14 @@ char shader_vertex[] =
 "layout (location = 1) in vec2 texture_coordination;          \n"
 "layout (location = 2) in vec3 normal;                        \n"
 "layout (location = 3) in float texture_blend_ratio;          \n"
+
+"layout (location = 4) in vec3 position2;                     \n"
+"layout (location = 5) in vec2 texture_coordination2;         \n"
+"layout (location = 6) in vec3 normal2;                       \n"
+"layout (location = 7) in float texture_blend_ratio2;         \n"
+
+"uniform float frame_percentage;        // for animation, if < 0, no animation is used \n"
+
 "                                                             \n"
 "uniform mat4 perspective_matrix;                             \n"
 "uniform mat4 world_matrix;                                   \n"
@@ -59,10 +68,23 @@ char shader_vertex[] =
 "                                                             \n"
 "void main()                                                  \n"
 "{                                                            \n"
-"  transformed_position = (world_matrix * vec4(position,1.0)).xyz;                                     \n"
+
+"  if (frame_percentage >= 0) {                                \n"
+"    transformed_position = mix(position,position2,frame_percentage); \n"
+"    transformed_normal = mix(normal,normal2,frame_percentage);          \n"
+"    uv_coordination = mix(texture_coordination,texture_coordination2,frame_percentage);              \n"
+"    texture_ratio = mix(texture_blend_ratio,texture_blend_ratio2,frame_percentage); }          \n"
+"  else {"
+"    transformed_position = position; \n"
+"    transformed_normal = normal; } \n"
+"     \n"
+
+""
+
+"  transformed_position = (world_matrix * vec4(transformed_position,1.0)).xyz;                         \n"
 "  gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                    \n"
 "  uv_coordination = texture_coordination;                                                             \n"
-"  transformed_normal = normalize((world_matrix * vec4(normal, 0.0)).xyz);                             \n"
+"  transformed_normal = normalize((world_matrix * vec4(transformed_normal,0.0)).xyz);                             \n"
 "                                                                                                      \n"
 "   if (textures == uint(2))                                                                           \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
@@ -1052,6 +1074,7 @@ GLuint fog_distance_location;
 GLuint use_fog_location;
 GLuint far_plane_location;
 GLuint background_color_location;
+GLuint frame_percentage_location;
 
 struct camera_struct                                                            /// represents a camera
 {
@@ -1694,6 +1717,7 @@ bool compile_shaders()
   far_plane_location = glGetUniformLocation(shader_program,"far_plane");
   background_color_location = glGetUniformLocation(shader_program,"background_color");
   use_fog_location = glGetUniformLocation(shader_program,"use_fog");
+  frame_percentage_location = glGetUniformLocation(shader_program,"frame_percentage");
 
   return true;
 }
@@ -3227,6 +3251,7 @@ void mesh_3d_static::draw()
   glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
   glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
+  glUniform1f(frame_percentage_location,(GLfloat) -1.0);     // no animation
   glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
   glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
   glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
@@ -3796,9 +3821,9 @@ void mesh_3d_animated::add_frame(mesh_3d_static *mesh, unsigned int length)
   triangle_3d triangle;
   unsigned int i;
 
-  glGenBuffers(1,&frame.vbo);
-  glGenBuffers(1,&frame.ibo);
   frame.length_ms = length;
+  frame.vbo = 0;
+  frame.ibo = 0;
 
   for (i = 0; i < mesh->vertex_count(); i++)
     {
@@ -3862,6 +3887,40 @@ unsigned int mesh_3d_animated::triangle_count()
 void mesh_3d_animated::update()
 
 {
+  unsigned int i,j;
+
+  for (i = 0; i < this->frames.size(); i++)
+    {
+      if (this->frames[i].vbo == 0)
+        {
+          glGenBuffers(1,&this->frames[i].vbo);
+
+          if (this->frames[i].vbo == 0)
+            cerr << "ERROR: VBO couldn't be allocated for the animated mesh.";
+        }
+
+      if (this->frames[i].ibo == 0)
+        {
+          glGenBuffers(1,&this->frames[i].ibo);
+
+          if (this->frames[i].ibo == 0)
+            cerr << "ERROR: IBO couldn't be allocated for the animated mesh.";
+        }
+
+      vector<vertex_3d> helper_vertices;
+
+      for (j = 0; j < this->frames[i].vertices.size(); j++)
+        {
+          helper_vertices.push_back(this->frames[i].vertices[j]);
+          helper_vertices.push_back(this->frames[(i + 1) % this->frames.size()].vertices[j]);
+        }
+
+      glBindBuffer(GL_ARRAY_BUFFER,this->frames[i].vbo);
+      glBufferData(GL_ARRAY_BUFFER,helper_vertices.size() * sizeof(vertex_3d),&helper_vertices[0],GL_STATIC_DRAW);
+
+      glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->frames[i].ibo);
+      glBufferData(GL_ELEMENT_ARRAY_BUFFER,this->frames[i].triangles.size() * sizeof(triangle_3d),&this->frames[i].triangles[0],GL_STATIC_DRAW);
+    }
 }
 
 //----------------------------------------------------------------------
@@ -3924,6 +3983,110 @@ void mesh_3d_animated::draw()
             }
         }
     }
+
+  float transparent_color[3];
+
+  if (this->texture != NULL)
+    this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
+
+  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
+
+  if (this->texture == NULL)
+    glUniform1ui(textures_location,(GLuint) 0);
+  else if (this->texture2 == NULL)
+    glUniform1ui(textures_location,(GLuint) 1);
+  else
+    glUniform1ui(textures_location,(GLuint) 2);
+
+  glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
+
+  switch (this->mesh_render_mode)
+    {
+      case RENDER_MODE_NO_LIGHT:
+        glUniform1ui(render_mode_location,(GLuint) 0);
+        break;
+
+      case RENDER_MODE_SHADED_GORAUD:
+        glUniform1ui(render_mode_location,(GLuint) 1);
+        break;
+
+      case RENDER_MODE_SHADED_PHONG:
+        glUniform1ui(render_mode_location,(GLuint) 2);
+        break;
+
+      case RENDER_MODE_WIREFRAME:
+        glUniform1ui(render_mode_location,(GLuint) 3);
+        break;
+    }
+
+  glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
+  glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
+  glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
+  glUniform1f(frame_percentage_location,(GLfloat) this->frame_percentage);
+  glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
+  glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
+  glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
+  glUniform1f(specular_exponent_location,(GLfloat) this->material_specular_exponent);
+
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+  glEnableVertexAttribArray(2);
+  glEnableVertexAttribArray(3);
+  glEnableVertexAttribArray(4);
+  glEnableVertexAttribArray(5);
+  glEnableVertexAttribArray(6);
+  glEnableVertexAttribArray(7);
+
+  if (this->texture != NULL)
+    {
+      glActiveTexture(GL_TEXTURE0);      // set the active texture unit to 0
+      glBindTexture(GL_TEXTURE_2D,this->texture->get_texture_object());
+
+      if (this->texture2 != NULL)
+        {
+          glActiveTexture(GL_TEXTURE1);
+          glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
+        }
+    }
+
+  glBindBuffer(GL_ARRAY_BUFFER,this->frames[this->current_frame].vbo);
+  glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,0);                   // position
+  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 12);  // texture coordination
+  glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 20);  // normal
+  glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 32);  // texture blend ratio
+  glVertexAttribPointer(4,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 36);  // position2
+  glVertexAttribPointer(5,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 48);  // texture coordination2
+  glVertexAttribPointer(6,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 56);  // normal2
+  glVertexAttribPointer(7,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 68);  // texture blend ratio2
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->frames[this->current_frame].ibo);
+
+  switch (this->mesh_render_mode)
+    {
+      case RENDER_MODE_SHADED_GORAUD:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+        break;
+
+      case RENDER_MODE_WIREFRAME:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+        break;
+
+      default:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+        break;
+    }
+
+  glDrawElements(GL_TRIANGLES,this->frames[this->current_frame].triangles.size() * 3,GL_UNSIGNED_INT,0);
+  glDisableVertexAttribArray(0);
+  glDisableVertexAttribArray(1);
+  glDisableVertexAttribArray(2);
+  glDisableVertexAttribArray(3);
+  glDisableVertexAttribArray(4);
+  glDisableVertexAttribArray(5);
+  glDisableVertexAttribArray(6);
+  glDisableVertexAttribArray(7);
+
+ // cout << this->current_frame << " " << this->frame_percentage << " - " << this->frames[this->current_frame].ibo << " " << this->frames[this->current_frame].vbo << endl;
 }
 
 //----------------------------------------------------------------------
