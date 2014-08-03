@@ -381,7 +381,7 @@ class texture_2d   /// represents a texture, it's x and y size must be power of 
 
 //------------------------------------
 
-class mesh_3d      /// an sbstract class of 3D mesh made of triangles
+class mesh_3d      /// an abstract class of 3D mesh made of triangles
   {
     protected:
       point_3d position;
@@ -585,7 +585,7 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
     protected:
       GLuint vbo;          /// the mesh's virtual buffer object handle
       GLuint ibo;          /// the mesh's index buffer object handle
-      mesh_3d *instance_parent;             /// if this object is an instance of another mesh, this points to it
+      mesh_3d_static *instance_parent;    /// if this object is an instance of another mesh, this points to it
 
     public:
       vector<vertex_3d> vertices;
@@ -771,6 +771,7 @@ class mesh_3d_animated: public mesh_3d
       float play_speed;
       int current_frame;           /// current frame number
       float frame_percentage;      /// percentage played of the current frame
+      mesh_3d_animated *instance_parent;    /// if this object is an instance of another mesh, this points to it
 
     public:
       vector<animation_frame> frames;
@@ -791,6 +792,16 @@ class mesh_3d_animated: public mesh_3d
 
          @param speed speed at which the animation should be played (1.0
                 is normal)
+         */
+
+      void make_instance_of(mesh_3d_animated *what);
+        /**<
+         Makes this mesh an instance of another mesh (that means that
+         this mesh will use the other meshe's vertex data stored in GPU
+         memory.) The vertex data of this mesh will be deleted by
+         calling this method.
+
+         @param what mesh of which this mesh will become an instance
          */
 
       void use_interpolation(bool interpolate);
@@ -2957,6 +2968,15 @@ void mesh_3d::set_position(float x, float y, float z)
 void mesh_3d_static::clear()
 
 {
+  if (this->instance_parent == NULL)
+    {
+      if (this->vbo != 0)
+        glDeleteBuffers(1,&this->vbo);
+
+      if (this->ibo != 0)
+        glDeleteBuffers(1,&this->ibo);
+    }
+
   this->vertices.clear();
   this->triangles.clear();
 }
@@ -2967,18 +2987,10 @@ void mesh_3d_static::make_instance_of(mesh_3d_static *what)
 
 {
   GLuint what_vbo,what_ibo;
-
-  if (this->vbo != 0)
-    glDeleteBuffers(1,&this->vbo);
-
-  if (this->ibo != 0)
-    glDeleteBuffers(1,&this->ibo);
-
+  this->clear();
   what->get_vbo_ibo(&what_vbo,&what_ibo);
-
   this->vbo = what_vbo;
   this->ibo = what_ibo;
-
   this->instance_parent = what;
 }
 
@@ -3723,11 +3735,7 @@ mesh_3d::~mesh_3d()
 mesh_3d_static::~mesh_3d_static()
 
 {
-  if (this->vbo != 0)
-    glDeleteBuffers(1,&this->vbo);
-
-  if (this->ibo != 0)
-    glDeleteBuffers(1,&this->ibo);
+  this->clear();
 }
 
 //----------------------------------------------------------------------
@@ -3787,7 +3795,28 @@ mesh_3d_animated::mesh_3d_animated(): mesh_3d()
   this->interpolating = true;
   this->play_speed = 1.0;
   this->current_frame = 0;
+  this->instance_parent = NULL;
   this->frame_percentage = 0.0;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::make_instance_of(mesh_3d_animated *what)
+
+{
+  unsigned int i;
+  animation_frame frame;
+
+  this->clear();
+
+  for (i = 0; i < what->frames.size(); i++)
+    {
+      frame.length_ms = what->frames[i].length_ms;
+      frame.vbo = what->frames[i].vbo;
+      frame.ibo = what->frames[i].ibo;
+    }
+
+  this->instance_parent = what;
 }
 
 //----------------------------------------------------------------------
@@ -3803,16 +3832,7 @@ void mesh_3d_animated::use_interpolation(bool interpolate)
 mesh_3d_animated::~mesh_3d_animated()
 
 {
-  unsigned int i;
-
-  for (i = 0; i < this->frames.size(); i++)
-    {
-      if (this->frames[i].vbo != 0)
-        glDeleteBuffers(1,&this->frames[i].vbo);
-
-      if (this->frames[i].ibo != 0)
-        glDeleteBuffers(1,&this->frames[i].ibo);
-    }
+  this->clear();
 }
 
 //----------------------------------------------------------------------
@@ -3940,6 +3960,19 @@ void mesh_3d_animated::update()
 void mesh_3d_animated::clear()
 
 {
+  unsigned int i;
+
+  if (this->instance_parent == NULL)
+    for (i = 0; i < this->frames.size(); i++)
+      {
+        if (this->frames[i].vbo != 0)
+          glDeleteBuffers(1,&this->frames[i].vbo);
+
+        if (this->frames[i].ibo != 0)
+          glDeleteBuffers(1,&this->frames[i].ibo);
+      }
+
+  this->frames.clear();
 }
 
 //----------------------------------------------------------------------
@@ -3955,17 +3988,35 @@ void mesh_3d_animated::set_speed(float speed)
 void mesh_3d_animated::draw()
 
 {
-  if (this->frames.size() == 0)
+  unsigned int number_of_frames;
+  unsigned int frame_length;
+  unsigned int number_of_triangles;
+  GLuint effective_vbo,effective_ibo;
+
+  if (this->instance_parent == NULL)
+    {
+      number_of_triangles = this->frames[this->current_frame].triangles.size();
+      number_of_frames = this->frames.size();
+      frame_length = this->frames[this->current_frame].length_ms;
+    }
+  else
+    {
+      number_of_triangles = this->instance_parent->frames[this->current_frame].triangles.size();
+      number_of_frames = this->instance_parent->frames.size();
+      frame_length = this->instance_parent->frames[this->current_frame].length_ms;
+    }
+
+  if (number_of_frames == 0)
     return;
 
-  this->frame_percentage += this->play_speed * (get_frame_time_difference() / ((float) this->frames[this->current_frame].length_ms));
+  this->frame_percentage += this->play_speed * (get_frame_time_difference() / ((float) frame_length));
 
   while (this->frame_percentage > 1.0)
     {
       this->current_frame++;
       this->frame_percentage -= 1.0;
 
-      if (this->current_frame >= (int) this->frames.size())
+      if (this->current_frame >= (int) number_of_frames)
         {
           this->current_frame = 0;
 
@@ -3985,7 +4036,7 @@ void mesh_3d_animated::draw()
 
       if (this->current_frame < 0)
         {
-          this->current_frame = this->frames.size() - 1;
+          this->current_frame = number_of_frames - 1;
 
           if (!this->loop)
             {
@@ -4061,7 +4112,19 @@ void mesh_3d_animated::draw()
         }
     }
 
-  glBindBuffer(GL_ARRAY_BUFFER,this->frames[this->current_frame].vbo);
+  if (this->instance_parent == NULL)
+    {
+      effective_vbo = this->frames[this->current_frame].vbo;
+      effective_ibo = this->frames[this->current_frame].ibo;
+    }
+  else
+    {
+      effective_vbo = this->instance_parent->frames[this->current_frame].vbo;
+      effective_ibo = this->instance_parent->frames[this->current_frame].ibo;
+    }
+
+
+  glBindBuffer(GL_ARRAY_BUFFER,effective_vbo);
   glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,0);                   // position
   glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 12);  // texture coordination
   glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 20);  // normal
@@ -4071,7 +4134,7 @@ void mesh_3d_animated::draw()
   glVertexAttribPointer(6,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 56);  // normal2
   glVertexAttribPointer(7,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 68);  // texture blend ratio2
 
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->frames[this->current_frame].ibo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,effective_ibo);
 
   switch (this->mesh_render_mode)
     {
@@ -4088,7 +4151,7 @@ void mesh_3d_animated::draw()
         break;
     }
 
-  glDrawElements(GL_TRIANGLES,this->frames[this->current_frame].triangles.size() * 3,GL_UNSIGNED_INT,0);
+  glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
   glDisableVertexAttribArray(0);
   glDisableVertexAttribArray(1);
   glDisableVertexAttribArray(2);
