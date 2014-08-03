@@ -1013,9 +1013,17 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
 float get_fps();
   /**<
    Returns current FPS. FPS is being recomputed after every FPS_FRAMES
-   frame.
+   frames.
 
    @return current number of frames per second
+   */
+
+float get_spf();
+  /**<
+   Returns current SPF (seconds per frame). SPF is being recomputed after
+   every FPS_FRAMES frames.
+
+   @return current number of seconds per frame
    */
 
 void set_global_light(point_3d direction, unsigned char red, unsigned char green, unsigned char blue);
@@ -1059,6 +1067,7 @@ float global_fog_distance;                                         /// at what d
 int global_frame_counter = 0;                                      /// for FPS
 int global_last_time = 0;                                          /// for FPS
 float global_fps = 0;
+float global_spf = 0;
 
 unsigned char global_background_color[3];                          /// background color of the viewport
 bool global_keyboard_state[512];                                   /// keeps the keyboard state (each ASCII character + special keys) for the advanced keyboard function
@@ -1412,6 +1421,7 @@ void loop_function()
       {
         float ms_difference = get_time() - global_last_time;
         float sec_difference = ms_difference / 1000.0;
+        global_spf = sec_difference / FPS_FRAMES;
         global_fps = FPS_FRAMES / sec_difference;
 
         global_frame_counter = FPS_FRAMES;
@@ -3609,6 +3619,14 @@ float get_fps()
 
 //----------------------------------------------------------------------
 
+float get_spf()
+
+{
+  return global_spf;
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_static::merge_vertices(unsigned int index1, unsigned int index2, bool average_position)
 
 {
@@ -4122,7 +4140,6 @@ void mesh_3d_animated::draw()
       effective_vbo = this->instance_parent->frames[this->current_frame].vbo;
       effective_ibo = this->instance_parent->frames[this->current_frame].ibo;
     }
-
 
   glBindBuffer(GL_ARRAY_BUFFER,effective_vbo);
   glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,0);                   // position
