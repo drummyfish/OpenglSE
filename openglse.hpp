@@ -585,6 +585,7 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
     protected:
       GLuint vbo;          /// the mesh's virtual buffer object handle
       GLuint ibo;          /// the mesh's index buffer object handle
+      GLuint vao;          /// the mesh's vertex array object handle
       mesh_3d_static *instance_parent;    /// if this object is an instance of another mesh, this points to it
 
     public:
@@ -2980,6 +2981,9 @@ void mesh_3d_static::clear()
 {
   if (this->instance_parent == NULL)
     {
+      if (this->vao != 0)
+        glDeleteVertexArrays(1,&this->vao);
+
       if (this->vbo != 0)
         glDeleteBuffers(1,&this->vbo);
 
@@ -3002,6 +3006,7 @@ void mesh_3d_static::make_instance_of(mesh_3d_static *what)
   this->vbo = what_vbo;
   this->ibo = what_ibo;
   this->instance_parent = what;
+  this->update();
 }
 
 //----------------------------------------------------------------------
@@ -3101,6 +3106,7 @@ mesh_3d_static::mesh_3d_static(): mesh_3d()
 {
   this->vbo = 0;
   this->ibo = 0;
+  this->vao = 0;
   this->instance_parent = NULL;
 }
 
@@ -3135,8 +3141,13 @@ void mesh_3d::set_texture2(texture_2d *texture)
 void mesh_3d_static::update()
 
 {
-  if (this->instance_parent != NULL)
-    return;
+  if (this->vao == 0)
+    glGenVertexArrays(1,&this->vao);
+
+  if (this->vao == 0)
+    cerr << "ERROR: VAO couldn't be allocated for the mesh.";
+
+  glBindVertexArray(this->vao);
 
   if (this->vbo == 0)
     glGenBuffers(1,&this->vbo);
@@ -3145,7 +3156,9 @@ void mesh_3d_static::update()
     cerr << "ERROR: VBO couldn't be allocated for the mesh.";
 
   glBindBuffer(GL_ARRAY_BUFFER,this->vbo);
-  glBufferData(GL_ARRAY_BUFFER,this->vertices.size() * sizeof(vertex_3d),&this->vertices[0],GL_STATIC_DRAW);
+
+  if (this->instance_parent == NULL)
+    glBufferData(GL_ARRAY_BUFFER,this->vertices.size() * sizeof(vertex_3d),&this->vertices[0],GL_STATIC_DRAW);
 
   if (this->ibo == 0)
     glGenBuffers(1,&this->ibo);
@@ -3154,7 +3167,21 @@ void mesh_3d_static::update()
     cerr << "ERROR: IBO couldn't be allocated for the mesh.";
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ibo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER,this->triangles.size() * sizeof(triangle_3d),&this->triangles[0],GL_STATIC_DRAW);
+
+  if (this->instance_parent == NULL)
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,this->triangles.size() * sizeof(triangle_3d),&this->triangles[0],GL_STATIC_DRAW);
+
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+  glEnableVertexAttribArray(2);
+  glEnableVertexAttribArray(3);
+
+  glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),0);                   // position
+  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 12);  // texture coordination
+  glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 20);  // normal
+  glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 32);  // texture blend ratio
+
+  glBindVertexArray(0);   // unbind the meshe's VAO
 }
 
 //----------------------------------------------------------------------
@@ -3237,13 +3264,8 @@ void mesh_3d_static::draw()
   unsigned int number_of_triangles;
   float transparent_color[3];
 
-  if (this->vertices.size() == 0 || this->triangles.size() == 0)
-    return;
-
   if (this->texture != NULL)
     this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
-
-  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
 
   if (this->texture == NULL)
     glUniform1ui(textures_location,(GLuint) 0);
@@ -3252,27 +3274,9 @@ void mesh_3d_static::draw()
   else
     glUniform1ui(textures_location,(GLuint) 2);
 
+  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
   glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
-
-  switch (this->mesh_render_mode)
-    {
-      case RENDER_MODE_NO_LIGHT:
-        glUniform1ui(render_mode_location,(GLuint) 0);
-        break;
-
-      case RENDER_MODE_SHADED_GORAUD:
-        glUniform1ui(render_mode_location,(GLuint) 1);
-        break;
-
-      case RENDER_MODE_SHADED_PHONG:
-        glUniform1ui(render_mode_location,(GLuint) 2);
-        break;
-
-      case RENDER_MODE_WIREFRAME:
-        glUniform1ui(render_mode_location,(GLuint) 3);
-        break;
-    }
-
+  glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
   glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
   glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
   glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
@@ -3282,10 +3286,7 @@ void mesh_3d_static::draw()
   glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
   glUniform1f(specular_exponent_location,(GLfloat) this->material_specular_exponent);
 
-  glEnableVertexAttribArray(0);
-  glEnableVertexAttribArray(1);
-  glEnableVertexAttribArray(2);
-  glEnableVertexAttribArray(3);
+  glBindVertexArray(this->vao);
 
   if (this->texture != NULL)
     {
@@ -3298,14 +3299,6 @@ void mesh_3d_static::draw()
           glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
         }
     }
-
-  glBindBuffer(GL_ARRAY_BUFFER,this->vbo);
-  glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),0);                   // position
-  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 12);  // texture coordination
-  glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 20);  // normal
-  glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 32);  // texture blend ratio
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,this->ibo);
 
   switch (this->mesh_render_mode)
     {
@@ -3328,10 +3321,8 @@ void mesh_3d_static::draw()
     number_of_triangles = this->instance_parent->triangle_count();
 
   glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
-  glDisableVertexAttribArray(0);
-  glDisableVertexAttribArray(1);
-  glDisableVertexAttribArray(2);
-  glDisableVertexAttribArray(3);
+
+  glBindVertexArray(0);
 }
 
 //----------------------------------------------------------------------
