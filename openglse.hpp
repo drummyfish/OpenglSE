@@ -9,7 +9,7 @@
 #define GLEW_STATIC
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
-#define FPS_FRAMES 500                  // after how many frames FPS is recomputed
+#define FPS_FRAMES 512                  // after how many frames FPS is recomputed
 #define MAX_ANIMATION_FRAMES 32
 
 #include <stdio.h>
@@ -1414,14 +1414,20 @@ void loop_function()
   */
 
 {
+  unsigned int helper_time = glutGet(GLUT_ELAPSED_TIME);
+
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
   user_render_function();
-  global_previous_frame_time = glutGet(GLUT_ELAPSED_TIME);
+
+  global_previous_frame_time = helper_time;
 
   if (global_frame_counter <= 0)      // recompute FPS
       {
+
         float ms_difference = get_time() - global_last_time;
         float sec_difference = ms_difference / 1000.0;
+
         global_spf = sec_difference / FPS_FRAMES;
         global_fps = FPS_FRAMES / sec_difference;
 
