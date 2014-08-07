@@ -26,6 +26,9 @@
 
 using namespace std;
 
+namespace gl_se
+{
+
 char shader_vertex[] =
 "#version 330                                                 \n"
 "layout (location = 0) in vec3 position;                      \n"
@@ -4283,4 +4286,5 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
 
 //----------------------------------------------------------------------
 
+} // namespace
 #endif
