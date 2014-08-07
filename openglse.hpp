@@ -11,6 +11,7 @@
 #define PI_DIVIDED_180 0.01745329251
 #define FPS_FRAMES 512                  // after how many frames FPS is recomputed
 #define MAX_ANIMATION_FRAMES 32
+#define MAX_SHADOWS 64                  // maximum number of shadows on the mesh surface
 
 #include <stdio.h>
 #include <string>
@@ -130,6 +131,8 @@ char shader_fragment[] =
 "uniform float fog_distance;                                  \n"
 "uniform vec3 background_color;  // viewport background color \n"
 "uniform bool use_fog;                                        \n"
+"uniform uint number_of_shadows;                              \n"
+"uniform float shadows[256];                                  \n"
 "                                                             \n"
 "vec3 transparent_color_difference;   // helper variable      \n"
 "vec3 reflection_vector;                                      \n"
@@ -137,6 +140,12 @@ char shader_fragment[] =
 "float specular_intensity;                                    \n"
 "float helper_intensity;                                      \n"
 "vec3 direction_to_camera;                                    \n"
+"uint i;                                                      \n"
+"float shadow_center_distance;                                \n"
+"uint shadow_index;                                           \n"
+"float dx, dy;                                                \n"
+"float shadow_intensity;                                      \n"
+"float shadow_color;                                          \n"
 "                                                             \n"
 "void main()                                                  \n"
 "{                                                            \n"
@@ -169,11 +178,20 @@ char shader_fragment[] =
 "                                                             \n"
 "  FragColor = FragColor * vec4(helper_intensity,helper_intensity,helper_intensity,1.0) * vec4(light_color,1.0); \n"
 "                                                             \n"
+"  for (i = uint(0); i < number_of_shadows; i++) {            \n"
+"    shadow_index = i * uint(4);  // sizeof shadow struct     \n"
+"    dx = uv_coordination.x - shadows[shadow_index];          \n"
+"    dy = uv_coordination.y - shadows[shadow_index + uint(1)];\n"
+"    shadow_center_distance = sqrt(dx * dx + dy * dy);        \n"
+"    shadow_color = sign(shadows[shadow_index + uint(3)]);    \n"
+"    shadow_intensity = clamp(-20.0 * shadow_center_distance + 20.0 * shadows[shadow_index + uint(2)],0.0,1.0); \n"
+"    FragColor = mix(FragColor,vec4(shadow_color,shadow_color,shadow_color,1.0),shadow_intensity * abs(shadows[shadow_index + uint(3)])); } \n"
+"                                                             \n"
 "  if (use_fog)                                               \n"
 "    FragColor = mix(vec4(background_color,1.0),FragColor,fog_intensity); // apply fog \n"
 "}                                                            \n";
 
-typedef enum       /// special key codes
+typedef enum                       /// special key codes
   {
     SPECIAL_KEY_UP = 256,
     SPECIAL_KEY_RIGHT,
@@ -183,10 +201,10 @@ typedef enum       /// special key codes
 
 typedef enum
   {
-    RENDER_MODE_NO_LIGHT = 0,    /// triangles are filled but not shaded
-    RENDER_MODE_SHADED_GORAUD,   /// triangles are filled and Goraud shaded (faster than Phong)
-    RENDER_MODE_SHADED_PHONG,    /// triangles are filled and Phong (per-pixel) shaded (slower but nicer)
-    RENDER_MODE_WIREFRAME        /// Goraud shaded, drawn in wireframe
+    RENDER_MODE_NO_LIGHT = 0,      /// triangles are filled but not shaded
+    RENDER_MODE_SHADED_GORAUD,     /// triangles are filled and Goraud shaded (faster than Phong)
+    RENDER_MODE_SHADED_PHONG,      /// triangles are filled and Phong (per-pixel) shaded (slower but nicer)
+    RENDER_MODE_WIREFRAME          /// Goraud shaded, drawn in wireframe
   } render_mode;
 
 typedef enum
@@ -201,20 +219,20 @@ typedef enum
 
 typedef enum
   {
-    ROTATION_XYZ,                 /// rotation around x first, then y and then z
-    ROTATION_ZYX,                 /// rotation around z first, then y and then x
-    ROTATION_ZXY,                 /// rotation around z first, then x and then y (standard for meshes)
-    ROTATION_YXZ                  /// rotation around y first, then x and then z (standard for camera)
+    ROTATION_XYZ,                   /// rotation around x first, then y and then z
+    ROTATION_ZYX,                   /// rotation around z first, then y and then x
+    ROTATION_ZXY,                   /// rotation around z first, then x and then y (standard for meshes)
+    ROTATION_YXZ                    /// rotation around y first, then x and then z (standard for camera)
   } rotation_matrix_type;
 
-typedef struct     /// a point in 3D space
+typedef struct                      /// a point in 3D space
   {
     float x;
     float y;
     float z;
   } point_3d;
 
-typedef struct     /// a vertice in 3D space
+typedef struct                      /// a vertice in 3D space
   {
     point_3d position;
     float texture_coordination[2];
@@ -222,14 +240,14 @@ typedef struct     /// a vertice in 3D space
     float texture_blend_ratio;      /// for texture blending
   } vertex_3d;
 
-typedef struct     /// a triangle represented as three vertex indices
+typedef struct                      /// a triangle represented as three vertex indices
   {
     unsigned int index1;
     unsigned int index2;
     unsigned int index3;
   } triangle_3d;
 
-typedef struct     /// an animation frame
+typedef struct                      /// an animation frame
   {
     GLuint vbo;
     GLuint ibo;
@@ -237,6 +255,13 @@ typedef struct     /// an animation frame
     vector<triangle_3d> triangles;
     unsigned int length_ms;         /// frame length in milliseconds
   } animation_frame;
+
+typedef struct                      /// simple shadow properties
+  {                                 // don't change this struct, it would probably mess things up
+    float position[2];              /// texture (uv) coordination of the shadow at the surface
+    float radius;
+    float brightness;               /// shadow brightness in range <-1,1>
+  } shadow;
 
 //------------------------------------
 
@@ -410,7 +435,15 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
           translation, rotation and scale matrices.
         */
 
+      void set_uniforms_for_rendering();
+        /**<
+          Sets the uniform variables asociated with this mesh for the
+          shader.
+         */
+
     public:
+      vector<shadow> shadows;             /// simple shadows on the object surface
+
       mesh_3d();
         /**<
          Class constructor.
@@ -427,6 +460,18 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
          be rendered).
 
          @param mode mode to be set
+         */
+
+      void add_shadow(float x, float y, float radius, float brightness);
+        /**<
+         Adds a new simple shadow blob that will be displayed on the
+         surface of the mesh.
+
+         @param x texture u coordination of the shadow center
+         @param y texture v coordination of the shadow center
+         @param radius shadow radius
+         @param brightness brightness in range <-1,1>, -1 means
+                completely black, 1 means completely white
          */
 
       void set_use_fog(bool enable);
@@ -1099,6 +1144,8 @@ GLuint use_fog_location;
 GLuint far_plane_location;
 GLuint background_color_location;
 GLuint frame_percentage_location;
+GLuint number_of_shadows_location;
+GLuint shadows_location;
 
 struct camera_struct                                                            /// represents a camera
 {
@@ -1749,6 +1796,8 @@ bool compile_shaders()
   background_color_location = glGetUniformLocation(shader_program,"background_color");
   use_fog_location = glGetUniformLocation(shader_program,"use_fog");
   frame_percentage_location = glGetUniformLocation(shader_program,"frame_percentage");
+  number_of_shadows_location = glGetUniformLocation(shader_program,"number_of_shadows");
+  shadows_location = glGetUniformLocation(shader_program,"shadows");
 
   return true;
 }
@@ -1895,6 +1944,38 @@ void set_global_light(point_3d direction, unsigned char red, unsigned char green
 
   glUniform3fv(light_color_location,1,(const GLfloat *) helper_color);
   glUniform3fv(light_direction_location,1,(const GLfloat *) helper_direction);
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d::set_uniforms_for_rendering()
+
+{
+  float transparent_color[3];
+
+  if (this->texture != NULL)
+    this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
+
+  if (this->texture == NULL)
+    glUniform1ui(textures_location,(GLuint) 0);
+  else if (this->texture2 == NULL)
+    glUniform1ui(textures_location,(GLuint) 1);
+  else
+    glUniform1ui(textures_location,(GLuint) 2);
+
+  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
+  glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
+  glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
+  glUniform1ui(number_of_shadows_location,(GLuint) (this->shadows.size() > MAX_SHADOWS ? MAX_SHADOWS : this->shadows.size()));
+  glUniform1fv(shadows_location,this->shadows.size() * 4,(GLfloat *) &this->shadows[0]);     // no animation
+  glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
+  glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
+  glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
+  glUniform1f(frame_percentage_location,(GLfloat) -1.0);     // no animation
+  glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
+  glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
+  glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
+  glUniform1f(specular_exponent_location,(GLfloat) this->material_specular_exponent);
 }
 
 //----------------------------------------------------------------------
@@ -3136,6 +3217,21 @@ void mesh_3d::set_texture(texture_2d *texture)
 
 //----------------------------------------------------------------------
 
+void mesh_3d::add_shadow(float x, float y, float radius, float brightness)
+
+{
+  shadow new_shadow;
+
+  new_shadow.position[0] = x;
+  new_shadow.position[1] = y;
+  new_shadow.radius = radius;
+  new_shadow.brightness = brightness;
+
+  this->shadows.push_back(new_shadow);
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::set_texture2(texture_2d *texture)
 
 {
@@ -3268,29 +3364,7 @@ void mesh_3d_static::draw()
 
 {
   unsigned int number_of_triangles;
-  float transparent_color[3];
-
-  if (this->texture != NULL)
-    this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
-
-  if (this->texture == NULL)
-    glUniform1ui(textures_location,(GLuint) 0);
-  else if (this->texture2 == NULL)
-    glUniform1ui(textures_location,(GLuint) 1);
-  else
-    glUniform1ui(textures_location,(GLuint) 2);
-
-  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
-  glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
-  glUniform1ui(render_mode_location,(GLuint) this->mesh_render_mode);
-  glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
-  glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
-  glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
-  glUniform1f(frame_percentage_location,(GLfloat) -1.0);     // no animation
-  glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
-  glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
-  glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
-  glUniform1f(specular_exponent_location,(GLfloat) this->material_specular_exponent);
+  this->set_uniforms_for_rendering();
 
   glBindVertexArray(this->vao);
 
@@ -4062,21 +4136,8 @@ void mesh_3d_animated::draw()
         }
     }
 
-  float transparent_color[3];
-
-  if (this->texture != NULL)
-    this->texture->get_transparent_color_float(transparent_color,transparent_color + 1,transparent_color + 2);
-
-  glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
-
-  if (this->texture == NULL)
-    glUniform1ui(textures_location,(GLuint) 0);
-  else if (this->texture2 == NULL)
-    glUniform1ui(textures_location,(GLuint) 1);
-  else
-    glUniform1ui(textures_location,(GLuint) 2);
-
-  glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
+  this->set_uniforms_for_rendering();
+  glUniform1f(frame_percentage_location,(GLfloat) (this->interpolating ? this->frame_percentage : 0.0));
 
   switch (this->mesh_render_mode)
     {
@@ -4096,15 +4157,6 @@ void mesh_3d_animated::draw()
         glUniform1ui(render_mode_location,(GLuint) 3);
         break;
     }
-
-  glUniform1ui(transparency_enabled_location,this->texture != NULL && this->texture->transparency_is_enabled() ? 1 : 0);
-  glUniform3fv(transparent_color_location,1,(const GLfloat *) transparent_color);
-  glUniform3fv(mesh_color_location,1,(const GLfloat *) this->color_float);
-  glUniform1f(frame_percentage_location,(GLfloat) (this->interpolating ? this->frame_percentage : 0.0));
-  glUniform1f(ambient_factor_location,(GLfloat) this->material_ambient_intensity);
-  glUniform1f(diffuse_factor_location,(GLfloat) this->material_diffuse_intensity);
-  glUniform1f(specular_factor_location,(GLfloat) this->material_specular_intensity);
-  glUniform1f(specular_exponent_location,(GLfloat) this->material_specular_exponent);
 
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
@@ -4174,8 +4226,6 @@ void mesh_3d_animated::draw()
   glDisableVertexAttribArray(5);
   glDisableVertexAttribArray(6);
   glDisableVertexAttribArray(7);
-
- // cout << this->current_frame << " " << this->frame_percentage << " - " << this->frames[this->current_frame].ibo << " " << this->frames[this->current_frame].vbo << endl;
 }
 
 //----------------------------------------------------------------------

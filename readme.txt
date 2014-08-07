@@ -28,9 +28,9 @@ implemented features:
 - texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
 - basic mesh operations (vertex merging, decreasing polygon count etc.)
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
+- very simple shadows (blobs underneath objects)
 
 to-do:
-- very simple shadows (dark blobs underneath objects)
 - mouse input handling
 - LOD (multiple meshes being switched depending on the distance)
 - text rendering
@@ -39,3 +39,4 @@ to-do:
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
+- simple physics
