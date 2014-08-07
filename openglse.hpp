@@ -385,6 +385,14 @@ class texture_2d   /// represents a texture, it's x and y size must be power of 
          @return true if everything went OK, false otherwise
          */
 
+      bool save_ppm(string filename);
+        /**<
+         Saves the texture to ppm file format.
+
+         @param filename file to be saved
+         @return true if everything went OK, false otherwise
+         */
+
       GLuint get_texture_object();
         /**<
          Returns the texture object handle;
@@ -705,6 +713,14 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          Loads the mesh from obj file format.
 
          @param filename file to be loaded
+         @return true if everything went OK, false otherwise
+         */
+
+      bool save_obj(string filename);
+        /**<
+         Saves the mesh as obj file format.
+
+         @param filename file to be saved
          @return true if everything went OK, false otherwise
          */
 
@@ -2633,6 +2649,33 @@ bool texture_2d::load_ppm(string filename)
 
 //----------------------------------------------------------------------
 
+bool texture_2d::save_ppm(string filename)
+
+{
+  unsigned int i,j;
+  unsigned char r,g,b;
+
+  FILE *file_handle;
+  file_handle = fopen(filename.c_str(),"wb");
+
+  if (!file_handle)
+    return false;
+
+  fprintf(file_handle,"P6 %d %d 255 ",this->width,this->height);
+
+  for (j = 0; j < this->height; j++)
+    for (i = 0; i < this->width; i++)
+      {
+        this->get_pixel(i,j,&r,&g,&b);
+        fprintf(file_handle,"%c%c%c",r,g,b);
+      }
+
+  fclose(file_handle);
+  return true;
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_static::smooth_normals()
 
 {
@@ -2803,6 +2846,62 @@ bool mesh_3d_static::load_obj(string filename)
 
   this->update();
 
+  return true;
+}
+
+//----------------------------------------------------------------------
+
+bool mesh_3d_static::save_obj(string filename)
+
+{
+  unsigned int i;
+
+  FILE *file_handle;
+  file_handle = fopen(filename.c_str(),"wb");
+
+  if (!file_handle)
+    return false;
+
+  for (i = 0; i < this->vertices.size(); i++)
+    {
+      fprintf(file_handle,"v %f %f %f\n",this->vertices[i].position.x,
+        this->vertices[i].position.y,this->vertices[i].position.z);
+    }
+
+  fprintf(file_handle,"\n");
+
+  for (i = 0; i < this->vertices.size(); i++)
+    {
+      fprintf(file_handle,"vt %f %f\n",this->vertices[i].texture_coordination[0],
+        this->vertices[i].texture_coordination[1]);
+    }
+
+  fprintf(file_handle,"\n");
+
+  for (i = 0; i < this->vertices.size(); i++)
+    {
+      fprintf(file_handle,"vn %f %f %f\n",this->vertices[i].normal.x,
+        this->vertices[i].normal.y,this->vertices[i].normal.z);
+    }
+
+  fprintf(file_handle,"\n");
+
+  for (i = 0; i < this->triangles.size(); i++)
+    {
+      fprintf(file_handle,"f %d/%d/%d %d/%d/%d %d/%d/%d\n",
+        this->triangles[i].index1 + 1,  // in OBJ indexes begin with 1
+        this->triangles[i].index1 + 1,
+        this->triangles[i].index1 + 1,
+        this->triangles[i].index2 + 1,
+        this->triangles[i].index2 + 1,
+        this->triangles[i].index2 + 1,
+        this->triangles[i].index3 + 1,
+        this->triangles[i].index3 + 1,
+        this->triangles[i].index3 + 1);
+    }
+
+  fclose(file_handle);
+  return true;
   return true;
 }
 
