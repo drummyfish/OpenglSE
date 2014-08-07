@@ -1,7 +1,7 @@
 /**
   Simple OpenGL graphic engine.
 
-  Miloslav Èíž, 2014
+  Miloslav ÄŒÃ­Å¾, 2014
 */
 #ifndef OPENGLSE_H
 #define OPENGLSE_H
@@ -17,10 +17,12 @@
 #include <string>
 #include <vector>
 #include <iomanip>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <limits>
 #include <math.h>
+
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 

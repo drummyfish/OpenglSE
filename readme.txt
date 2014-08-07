@@ -13,6 +13,7 @@ implemented features:
 - texture loading from PPM file format
 - interface to modify the texture pixel data
 - 3D mesh loading from OBJ file format
+- mesh and texture saving to OBJ and PPM
 - basic camera handling (with just one function call) implemented
 - simple texturing (one texture coordinate for each vertex)
 - simple texture transparency (each pixel can be either fully transparent or fully visible)
@@ -35,8 +36,15 @@ to-do:
 - LOD (multiple meshes being switched depending on the distance)
 - text rendering
 - 2D image rendering
-- mesh and texture saving to obj and ppm
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
 - simple physics
+
+instalation:
+- install GLEW and FREEGLUT:
+  - Fedora: yum install glew-devel freeglut-devel
+- include openglse.hpp in your sourcecode and use namespace gl_se
+- link with GCC:
+  - on Windows add these flags: -lfreeglut -lglew32s -lopengl32
+  - on Linux add these flags: -lfreeglut -lglew32s -lopengl32
