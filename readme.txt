@@ -27,7 +27,7 @@ implemented features:
 - possibility to turn off fog for specific objects (e.g. sky box)
 - instancing (sharing mesh data on GPU)
 - texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
-- basic mesh operations (vertex merging, decreasing polygon count etc.)
+- basic mesh operations (vertex and mesh merging, decreasing polygon count etc.)
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
 - very simple shadows (blobs underneath objects)
 

@@ -431,6 +431,7 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
       unsigned int color[3];   /// RGB mesh color that's used when the mesh doesn't have any texture
       float color_float[3];    /// mesh RGB color in range <0,1>
       render_mode mesh_render_mode;         /// determines how the model will be rendered
+      bool visible;
 
       float material_ambient_intensity;     /// in range <0,1>, affects how much ambient light is reflected
       float material_diffuse_intensity;     /// in range <0,1>, affects how much diffuse light is reflected
@@ -465,6 +466,21 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
       virtual ~mesh_3d() = 0;
         /**<
          Class destructor, frees all the object's memory.
+         */
+
+      void set_visibility(bool visible);
+        /**<
+         Sets the mesh visibility.
+
+         @param visible if true, the mesh will be visible, otherwise not
+         */
+
+      bool get_visibility();
+
+        /**<
+         Checks whether the mesh is visible.
+
+         @return true if the mesh is visible, false otherwise
          */
 
       void set_render_mode(render_mode mode);
@@ -704,6 +720,13 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
                 second vertex (index2) will be merged into the first one
          */
 
+      void merge(mesh_3d_static *mesh);
+        /**<
+         Merges another mesh to this one.
+
+         @param mesh mesh to merge to this one, it will stay unmodified
+         */
+
       void flip_triangles();
         /**<
          Flips the vertex triangles and normals (so that they're facing
@@ -913,6 +936,11 @@ class mesh_3d_animated: public mesh_3d
   };
 
 //------------------------------------
+
+void render_loop();
+  /**<
+   Starts the rendering loop.
+   */
 
 void draw_pixel(unsigned int x, unsigned int y, unsigned char r, unsigned char g, unsigned char b, unsigned char a);
   /**<
@@ -3278,6 +3306,7 @@ mesh_3d::mesh_3d()
 {
   this->texture = NULL;
   this->texture2 = NULL;
+  this->visible = true;
 
   this->set_color(255,255,255);
 
@@ -3468,6 +3497,10 @@ void mesh_3d_static::draw()
 
 {
   unsigned int number_of_triangles;
+
+  if (!this->visible)
+    return;
+
   this->set_uniforms_for_rendering();
 
   glBindVertexArray(this->vao);
@@ -4150,6 +4183,22 @@ void mesh_3d_animated::update()
 
 //----------------------------------------------------------------------
 
+void mesh_3d::set_visibility(bool visible)
+
+{
+  this->visible = visible;
+}
+
+//----------------------------------------------------------------------
+
+bool mesh_3d::get_visibility()
+
+{
+  return this->visible;
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_animated::clear()
 
 {
@@ -4170,6 +4219,41 @@ void mesh_3d_animated::clear()
 
 //----------------------------------------------------------------------
 
+void mesh_3d_static::merge(mesh_3d_static *mesh)
+
+{
+  unsigned int i;
+  triangle_3d triangle;
+
+  if (mesh == this)
+    return;
+
+  for (i = 0; i < mesh->triangle_count(); i++)
+    {
+      triangle = mesh->triangles[i];
+      triangle.index1 += this->vertex_count();
+      triangle.index2 += this->vertex_count();
+      triangle.index3 += this->vertex_count();
+
+      this->triangles.push_back(triangle);
+    }
+
+  for (i = 0; i < mesh->vertices.size(); i++)
+    this->vertices.push_back(mesh->vertices[i]);
+
+  this->update();
+}
+
+//----------------------------------------------------------------------
+
+void render_loop()
+
+{
+  glutMainLoop();
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_animated::set_speed(float speed)
 
 {
@@ -4185,6 +4269,9 @@ void mesh_3d_animated::draw()
   unsigned int frame_length;
   unsigned int number_of_triangles;
   GLuint effective_vbo,effective_ibo;
+
+  if (!this->visible)
+    return;
 
   if (this->instance_parent == NULL)
     {
