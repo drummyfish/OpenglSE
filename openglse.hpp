@@ -512,20 +512,6 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
                 otherwise not
          */
 
-      virtual unsigned int vertex_count() = 0;
-        /**<
-         Gets the mesh vertex count.
-
-         @return number of vertices of the mesh
-         */
-
-      virtual unsigned int triangle_count() = 0;
-        /**<
-         Gets the mesh triangle count.
-
-         @return number of triangles of the mesh
-         */
-
       render_mode get_render_mode();
         /**<
          Returns the render mode set for the mesh.
@@ -640,16 +626,23 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
          instance of another mesh.
         */
 
+      virtual void unload() = 0;
+        /**<
+         Unloads the mesh data from GPU freeing some of its memory. The
+         mesh will still keep its data in RAM and can be loaded later
+         into GPU again using update() method.
+         */
+
       virtual void draw() = 0;
         /**<
          Draws the model.
         */
+  };
 
-      virtual void print_data() = 0;
-        /**<
-         Debugging purposes method, prints the model's vertices and
-         triangles to stdout.
-         */
+//------------------------------------
+
+class lod_manager                            /// set of meshes that are switched between depending on their distance
+  {
   };
 
 //------------------------------------
@@ -686,12 +679,24 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          @param what mesh of which this mesh will become an instance
          */
 
-      virtual unsigned int vertex_count();
-      virtual void print_data();
-      virtual unsigned int triangle_count();
       virtual void update();
+      virtual void unload();
       virtual void draw();
       virtual void clear();
+
+      unsigned int vertex_count();
+        /**<
+         Gets the mesh vertex count.
+
+         @return number of vertices of the mesh
+         */
+
+      unsigned int triangle_count();
+        /**<
+         Gets the mesh triangle count.
+
+         @return number of triangles of the mesh
+         */
 
       void add_triangle(unsigned int index1, unsigned int index2, unsigned int index3);
         /**<
@@ -701,6 +706,12 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          @param index2 second index of the triangle
          @param index3 third index of the triangle
         */
+
+      void print_data();
+       /**<
+         Debugging purposes method, prints the model's vertices and
+         triangles to stdout.
+         */
 
       void remove_useless_triangles();
         /**<
@@ -927,10 +938,8 @@ class mesh_3d_animated: public mesh_3d
                 it will stop
          */
 
-      virtual unsigned int vertex_count();
-      virtual void print_data();
-      virtual unsigned int triangle_count();
       virtual void update();
+      virtual void unload();
       virtual void clear();
       virtual void draw();
   };
@@ -3198,18 +3207,7 @@ void mesh_3d::set_position(float x, float y, float z)
 void mesh_3d_static::clear()
 
 {
-  if (this->instance_parent == NULL)
-    {
-      if (this->vao != 0)
-        glDeleteVertexArrays(1,&this->vao);
-
-      if (this->vbo != 0)
-        glDeleteBuffers(1,&this->vbo);
-
-      if (this->ibo != 0)
-        glDeleteBuffers(1,&this->ibo);
-    }
-
+  this->unload();
   this->vertices.clear();
   this->triangles.clear();
 }
@@ -3417,6 +3415,52 @@ void mesh_3d_static::update()
   glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 32);  // texture blend ratio
 
   glBindVertexArray(0);   // unbind the meshe's VAO
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_static::unload()
+
+{
+  if (this->instance_parent == NULL)
+    {
+      if (this->vao != 0)
+        glDeleteVertexArrays(1,&this->vao);
+
+      if (this->vbo != 0)
+        glDeleteBuffers(1,&this->vbo);
+
+      if (this->ibo != 0)
+        glDeleteBuffers(1,&this->ibo);
+    }
+
+  this->vao = 0;
+  this->vbo = 0;
+  this->ibo = 0;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_animated::unload()
+
+{
+  unsigned int i;
+
+  if (this->instance_parent == NULL)
+    for (i = 0; i < this->frames.size(); i++)
+      {
+        if (this->frames[i].vbo != 0)
+          glDeleteBuffers(1,&this->frames[i].vbo);
+
+        if (this->frames[i].ibo != 0)
+          glDeleteBuffers(1,&this->frames[i].ibo);
+      }
+
+  for (i = 0; i < this->frames.size(); i++)
+    {
+      this->frames[i].vbo = 0;
+      this->frames[i].ibo = 0;
+    }
 }
 
 //----------------------------------------------------------------------
@@ -4119,29 +4163,6 @@ void mesh_3d_animated::set_playing(bool play)
 
 //----------------------------------------------------------------------
 
-unsigned int mesh_3d_animated::vertex_count()
-
-{
-  return this->frames.size() == 0 ? 0 : this->frames[0].vertices.size();
-}
-
-//----------------------------------------------------------------------
-
-void mesh_3d_animated::print_data()
-
-{
-}
-
-//----------------------------------------------------------------------
-
-unsigned int mesh_3d_animated::triangle_count()
-
-{
-  return this->frames.size() == 0 ? 0 : this->frames[0].triangles.size();
-}
-
-//----------------------------------------------------------------------
-
 void mesh_3d_animated::update()
 
 {
@@ -4202,18 +4223,7 @@ bool mesh_3d::get_visibility()
 void mesh_3d_animated::clear()
 
 {
-  unsigned int i;
-
-  if (this->instance_parent == NULL)
-    for (i = 0; i < this->frames.size(); i++)
-      {
-        if (this->frames[i].vbo != 0)
-          glDeleteBuffers(1,&this->frames[i].vbo);
-
-        if (this->frames[i].ibo != 0)
-          glDeleteBuffers(1,&this->frames[i].ibo);
-      }
-
+  this->unload();
   this->frames.clear();
 }
 

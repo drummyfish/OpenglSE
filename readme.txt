@@ -40,6 +40,18 @@ to-do:
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
 - simple physics
+- simple Bezier/linear curves and interpolation functions (for camera movement etc.)
+
+classes (to-do):
+
+gpu_data               something that can be uploaded to GPU
+  mesh_3d              abstract, 3D triangle model            
+    mesh_3d_static     non-animated 3D mesh
+    mesh_3d_animated   animated 3D mesh
+    picture_2d
+  texture_2d           texture to be associated with a mesh
+
+lod_manager            set of multiple meshes that are being switched between depending on their distance
 
 instalation:
 - install GLEW and FREEGLUT:
