@@ -48,10 +48,9 @@ gpu_data               something that can be uploaded to GPU
   mesh_3d              abstract, 3D triangle model            
     mesh_3d_static     non-animated 3D mesh
     mesh_3d_animated   animated 3D mesh
-    picture_2d
+    mesh_lod           set of multiple meshes that are being switched between depending on their distance
   texture_2d           texture to be associated with a mesh
-
-lod_manager            set of multiple meshes that are being switched between depending on their distance
+picture_2d
 
 instalation:
 - install GLEW and FREEGLUT:

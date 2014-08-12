@@ -9,7 +9,7 @@
 #define GLEW_STATIC
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
-#define FPS_FRAMES 512                  // after how many frames FPS is recomputed
+#define RECOMPUTE_FRAMES 128            // after how many frames things like FPS or LOD are recomputed
 #define MAX_ANIMATION_FRAMES 32
 #define MAX_SHADOWS 64                  // maximum number of shadows on the mesh surface
 
@@ -449,10 +449,10 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
           translation, rotation and scale matrices.
         */
 
-      void set_uniforms_for_rendering();
+      void init_rendering();
         /**<
-          Sets the uniform variables asociated with this mesh for the
-          shader.
+          Sets the uniform variables, textures and other things for the
+          shaed before rendering is done.
          */
 
     public:
@@ -481,6 +481,14 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
          Checks whether the mesh is visible.
 
          @return true if the mesh is visible, false otherwise
+         */
+
+      texture_2d *get_texture(unsigned int texture_no);
+        /**<
+         Gets the texture of this mesh.
+
+         @param texture_no number of texture (1 or 2)
+         @return texture
          */
 
       void set_render_mode(render_mode mode);
@@ -641,12 +649,6 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
 
 //------------------------------------
 
-class lod_manager                            /// set of meshes that are switched between depending on their distance
-  {
-  };
-
-//------------------------------------
-
 class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
   {
     protected:
@@ -688,14 +690,18 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
         /**<
          Gets the mesh vertex count.
 
-         @return number of vertices of the mesh
+         @return number of vertices of the mesh, if the mesh is
+                 instanced, then the number of vertices of the instance
+                 parent is returned
          */
 
       unsigned int triangle_count();
         /**<
          Gets the mesh triangle count.
 
-         @return number of triangles of the mesh
+         @return number of triangles of the mesh, if the mesh is
+                 instanced, then the number of triangles of the instance
+                 parent is returned
          */
 
       void add_triangle(unsigned int index1, unsigned int index2, unsigned int index3);
@@ -793,13 +799,14 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          @param z1 z coordination of the second point
          */
 
-      void get_vbo_ibo(GLuint *vbo, GLuint *ibo);
+      void get_vbo_ibo_vao(GLuint *vbo, GLuint *ibo, GLuint *vao);
         /**<
-         Gets the VBO (vertex buffer object) and IBO (index buffer object)
-         handles.
+         Gets the VBO (vertex buffer object), IBO (index buffer object)
+         and VAO (vertex array object) handles.
 
          @param vbo in this vriable VBO handle will be returned
          @param ibo in this vriable IBO handle will be returned
+         @param vao in this vriable VAO handle will be returned
          */
 
       void texture_map_plane(axis_direction direction, float plane_width, float plane_height);
@@ -942,6 +949,64 @@ class mesh_3d_animated: public mesh_3d
       virtual void unload();
       virtual void clear();
       virtual void draw();
+  };
+
+//------------------------------------
+
+typedef struct                        /// for LOD
+  {
+    float distance_to;                /// to which distance this mesh should be used
+    mesh_3d_static *mesh;
+  } detail_level;
+
+class mesh_lod: public mesh_3d        /// set of multiple static meshes that are being switched between depending on their distance, the LOD is being recomputed every RECOMPUTE_FRAMES frames
+  {
+    protected:
+      bool keep_everything_on_gpu;
+      int active_level;               // -1 if lod_meshes vector is empty
+
+    public:
+      vector<detail_level> lod_meshes;
+      mesh_lod();
+
+      int get_current_detail_level();
+        /**<
+         Gets the current detail level.
+
+         @return current detail level where 0 is the best quality mesh,
+                 -1 means there is active level because either there are
+                 no meshes set or the mesh_lod object is too far away
+                 beyond all meshes set distances
+         */
+
+      void add_detail_mesh(mesh_3d_static *mesh, float distance);
+        /**<
+         Adds a detail level mesh,
+
+         @param mesh mesh to be added
+         @param distance distance from the camera to which the mesh
+                should be used, the next mesh will be used after the
+                distance is crossed (or the mesh will stop being
+                displayed if there is no next level of detail)
+         */
+
+      virtual void update();
+        /**<
+         This should be called every time a change is made to this
+         object's lod_meshes vector manually.
+         */
+
+      virtual void unload();
+        /**<
+         Does nothing for this class.
+         */
+
+      virtual void draw();
+        /**<
+         Draws the current level of detail mesh.
+         */
+
+      virtual void clear();
   };
 
 //------------------------------------
@@ -1116,7 +1181,7 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
 
 float get_fps();
   /**<
-   Returns current FPS. FPS is being recomputed after every FPS_FRAMES
+   Returns current FPS. FPS is being recomputed after every RECOMPUTE_FRAMES
    frames.
 
    @return current number of frames per second
@@ -1125,7 +1190,7 @@ float get_fps();
 float get_spf();
   /**<
    Returns current SPF (seconds per frame). SPF is being recomputed after
-   every FPS_FRAMES frames.
+   every RECOMPUTE_FRAMES frames.
 
    @return current number of seconds per frame
    */
@@ -1167,6 +1232,7 @@ void (*user_keyboard_function)(int key, int x, int y) = NULL;      /// pointer t
 void (*user_advanced_keyboard_function)(bool key_up, int key, int x, int y) = NULL;
 float global_fov, global_near, global_far;                         /// perspective parameters
 float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
+bool global_recompute_lod = false;                                 /// flag that tells the mesh_lod objects to recompute their LODs
 
 int global_frame_counter = 0;                                      /// for FPS
 int global_last_time = 0;                                          /// for FPS
@@ -1526,17 +1592,19 @@ void loop_function()
   user_render_function();
 
   global_previous_frame_time = helper_time;
+  global_recompute_lod = false;
 
   if (global_frame_counter <= 0)      // recompute FPS
       {
+        global_recompute_lod = true;  // so that the next frame LOD will be recomputed
 
         float ms_difference = get_time() - global_last_time;
         float sec_difference = ms_difference / 1000.0;
 
-        global_spf = sec_difference / FPS_FRAMES;
-        global_fps = FPS_FRAMES / sec_difference;
+        global_spf = sec_difference / RECOMPUTE_FRAMES;
+        global_fps = RECOMPUTE_FRAMES / sec_difference;
 
-        global_frame_counter = FPS_FRAMES;
+        global_frame_counter = RECOMPUTE_FRAMES;
         global_last_time = get_time();
       }
     else
@@ -2006,7 +2074,7 @@ void set_global_light(point_3d direction, unsigned char red, unsigned char green
 
 //----------------------------------------------------------------------
 
-void mesh_3d::set_uniforms_for_rendering()
+void mesh_3d::init_rendering()
 
 {
   float transparent_color[3];
@@ -2020,6 +2088,52 @@ void mesh_3d::set_uniforms_for_rendering()
     glUniform1ui(textures_location,(GLuint) 1);
   else
     glUniform1ui(textures_location,(GLuint) 2);
+
+  switch (this->mesh_render_mode)
+    {
+      case RENDER_MODE_NO_LIGHT:
+        glUniform1ui(render_mode_location,(GLuint) 0);
+        break;
+
+      case RENDER_MODE_SHADED_GORAUD:
+        glUniform1ui(render_mode_location,(GLuint) 1);
+        break;
+
+      case RENDER_MODE_SHADED_PHONG:
+        glUniform1ui(render_mode_location,(GLuint) 2);
+        break;
+
+      case RENDER_MODE_WIREFRAME:
+        glUniform1ui(render_mode_location,(GLuint) 3);
+        break;
+    }
+
+  if (this->texture != NULL)
+    {
+      glActiveTexture(GL_TEXTURE0);      // set the active texture unit to 0
+      glBindTexture(GL_TEXTURE_2D,this->texture->get_texture_object());
+
+      if (this->texture2 != NULL)
+        {
+          glActiveTexture(GL_TEXTURE1);
+          glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
+        }
+    }
+
+  switch (this->mesh_render_mode)
+    {
+      case RENDER_MODE_SHADED_GORAUD:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+        break;
+
+      case RENDER_MODE_WIREFRAME:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+        break;
+
+      default:
+        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+        break;
+    }
 
   glUniformMatrix4fv(world_matrix_location,1,GL_TRUE,(const GLfloat *) this->transformation_matrix); // load this model's transformation matrix
   glUniform1ui(use_fog_location,this->use_fog ? 1 : 0);
@@ -3217,9 +3331,9 @@ void mesh_3d_static::clear()
 void mesh_3d_static::make_instance_of(mesh_3d_static *what)
 
 {
-  GLuint what_vbo,what_ibo;
+  GLuint what_vbo,what_ibo,what_vao;
   this->clear();
-  what->get_vbo_ibo(&what_vbo,&what_ibo);
+  what->get_vbo_ibo_vao(&what_vbo,&what_ibo,&what_vao);
   this->vbo = what_vbo;
   this->ibo = what_ibo;
   this->instance_parent = what;
@@ -3290,11 +3404,12 @@ void set_perspective(float fov_degrees, float near_plane, float far_plane)
 
 //----------------------------------------------------------------------
 
-void mesh_3d_static::get_vbo_ibo(GLuint *vbo, GLuint *ibo)
+void mesh_3d_static::get_vbo_ibo_vao(GLuint *vbo, GLuint *ibo, GLuint *vao)
 
 {
   *vbo = this->vbo;
   *ibo = this->ibo;
+  *vao = this->vao;
 }
 
 //----------------------------------------------------------------------
@@ -3540,49 +3655,12 @@ void camera_struct::handle_fps()
 void mesh_3d_static::draw()
 
 {
-  unsigned int number_of_triangles;
-
   if (!this->visible)
     return;
 
-  this->set_uniforms_for_rendering();
-
+  this->init_rendering();
   glBindVertexArray(this->vao);
-
-  if (this->texture != NULL)
-    {
-      glActiveTexture(GL_TEXTURE0);      // set the active texture unit to 0
-      glBindTexture(GL_TEXTURE_2D,this->texture->get_texture_object());
-
-      if (this->texture2 != NULL)
-        {
-          glActiveTexture(GL_TEXTURE1);
-          glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
-        }
-    }
-
-  switch (this->mesh_render_mode)
-    {
-      case RENDER_MODE_SHADED_GORAUD:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-        break;
-
-      case RENDER_MODE_WIREFRAME:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-        break;
-
-      default:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-        break;
-    }
-
-  if (this->instance_parent == NULL)
-    number_of_triangles = this->triangles.size();
-  else
-    number_of_triangles = this->instance_parent->triangle_count();
-
-  glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
-
+  glDrawElements(GL_TRIANGLES,this->triangle_count() * 3,GL_UNSIGNED_INT,0);
   glBindVertexArray(0);
 }
 
@@ -3631,7 +3709,7 @@ void set_fog(float distance)
 unsigned int mesh_3d_static::vertex_count()
 
 {
-  return this->vertices.size();
+  return this->instance_parent == NULL ? this->vertices.size() : this->instance_parent->vertex_count();
 }
 
 //----------------------------------------------------------------------
@@ -3656,7 +3734,7 @@ void mesh_3d_static::remove_useless_triangles()
 unsigned int mesh_3d_static::triangle_count()
 
 {
-  return this->triangles.size();
+  return this->instance_parent == NULL ? this->triangles.size() : this->instance_parent->triangle_count();
 }
 
 //----------------------------------------------------------------------
@@ -4220,11 +4298,155 @@ bool mesh_3d::get_visibility()
 
 //----------------------------------------------------------------------
 
+mesh_lod::mesh_lod()
+
+{
+  this->active_level = -1;
+}
+
+//----------------------------------------------------------------------
+
+int mesh_lod::get_current_detail_level()
+
+{
+  return this->active_level;
+}
+
+//----------------------------------------------------------------------
+
+void mesh_lod::add_detail_mesh(mesh_3d_static *mesh, float distance)
+
+{
+  detail_level detail;
+
+  detail.mesh = mesh;
+  detail.distance_to = distance;
+
+  this->lod_meshes.push_back(detail);
+  this->update();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_lod::update()
+
+{
+  // sort the lod_meshes array by distance (index 0 ~ shortest distance):
+
+  unsigned int i,j;
+  detail_level helper;
+
+  for (i = 0; i < this->lod_meshes.size(); i++)
+    for (j = i; j < this->lod_meshes.size() - 1; j++)
+      {
+        if (this->lod_meshes[j].distance_to > this->lod_meshes[j + 1].distance_to)
+          {
+            helper = lod_meshes[j];
+            lod_meshes[j] = lod_meshes[j + 1];
+            lod_meshes[j + 1] = helper;
+          }
+      }
+}
+
+//----------------------------------------------------------------------
+
+void mesh_lod::unload()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+void mesh_lod::clear()
+
+{
+  this->active_level = -1;
+  this->lod_meshes.clear();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_lod::draw()
+
+{
+  if (this->lod_meshes.size() == 0)
+    return;
+
+  if (global_recompute_lod)
+    {
+      double dx,dy,dz,distance;
+
+      dx = this->position.x - camera.position.x;
+      dy = this->position.y - camera.position.y;
+      dz = this->position.z - camera.position.z;
+      distance = sqrt(dx * dx + dy * dy + dz * dz);
+
+      this->active_level = this->lod_meshes.size() - 1;
+
+      while (true)
+        {
+          if (this->active_level < 0)
+            {
+              this->active_level = 0;
+              break;
+            }
+
+          if (distance > this->lod_meshes[this->active_level].distance_to)
+            {
+              this->active_level++;
+              break;
+            }
+
+          this->active_level--;
+        }
+
+      if (this->active_level == (int) this->lod_meshes.size())
+        {
+          this->active_level = -1;
+          return;
+        }
+    }
+
+  if (this->active_level < 0)
+    return;
+
+  mesh_3d_static *mesh_to_draw = this->lod_meshes[this->active_level].mesh;
+  GLuint mesh_vbo,mesh_ibo,mesh_vao;
+
+  if (mesh_to_draw != NULL)
+    {
+      if (!this->visible)
+        return;
+
+      this->texture = mesh_to_draw->get_texture(1);
+      this->texture2 = mesh_to_draw->get_texture(2);
+      this->mesh_render_mode = mesh_to_draw->get_render_mode();
+      mesh_to_draw->get_vbo_ibo_vao(&mesh_vbo,&mesh_ibo,&mesh_vao);
+      this->init_rendering();
+      glBindVertexArray(mesh_vao);
+      glDrawElements(GL_TRIANGLES,mesh_to_draw->triangle_count() * 3,GL_UNSIGNED_INT,0);
+      glBindVertexArray(0);
+    }
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_animated::clear()
 
 {
   this->unload();
   this->frames.clear();
+}
+
+//----------------------------------------------------------------------
+
+texture_2d *mesh_3d::get_texture(unsigned int texture_no)
+
+{
+  if (texture_no == 2)
+    return this->texture2;
+  else
+    return this->texture;
 }
 
 //----------------------------------------------------------------------
@@ -4337,27 +4559,8 @@ void mesh_3d_animated::draw()
         }
     }
 
-  this->set_uniforms_for_rendering();
+  this->init_rendering();
   glUniform1f(frame_percentage_location,(GLfloat) (this->interpolating ? this->frame_percentage : 0.0));
-
-  switch (this->mesh_render_mode)
-    {
-      case RENDER_MODE_NO_LIGHT:
-        glUniform1ui(render_mode_location,(GLuint) 0);
-        break;
-
-      case RENDER_MODE_SHADED_GORAUD:
-        glUniform1ui(render_mode_location,(GLuint) 1);
-        break;
-
-      case RENDER_MODE_SHADED_PHONG:
-        glUniform1ui(render_mode_location,(GLuint) 2);
-        break;
-
-      case RENDER_MODE_WIREFRAME:
-        glUniform1ui(render_mode_location,(GLuint) 3);
-        break;
-    }
 
   glEnableVertexAttribArray(0);
   glEnableVertexAttribArray(1);
@@ -4367,18 +4570,6 @@ void mesh_3d_animated::draw()
   glEnableVertexAttribArray(5);
   glEnableVertexAttribArray(6);
   glEnableVertexAttribArray(7);
-
-  if (this->texture != NULL)
-    {
-      glActiveTexture(GL_TEXTURE0);      // set the active texture unit to 0
-      glBindTexture(GL_TEXTURE_2D,this->texture->get_texture_object());
-
-      if (this->texture2 != NULL)
-        {
-          glActiveTexture(GL_TEXTURE1);
-          glBindTexture(GL_TEXTURE_2D,this->texture2->get_texture_object());
-        }
-    }
 
   if (this->instance_parent == NULL)
     {
@@ -4402,21 +4593,6 @@ void mesh_3d_animated::draw()
   glVertexAttribPointer(7,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 68);  // texture blend ratio2
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,effective_ibo);
-
-  switch (this->mesh_render_mode)
-    {
-      case RENDER_MODE_SHADED_GORAUD:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-        break;
-
-      case RENDER_MODE_WIREFRAME:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-        break;
-
-      default:
-        glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-        break;
-    }
 
   glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
   glDisableVertexAttribArray(0);
