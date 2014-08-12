@@ -963,11 +963,27 @@ class mesh_lod: public mesh_3d        /// set of multiple static meshes that are
   {
     protected:
       bool keep_everything_on_gpu;
+      bool use_this_mesh_properties;  /// if true, then all the meshes will only provide geometry, other things (textures etc.) will be provided by this mesh_lod
       int active_level;               // -1 if lod_meshes vector is empty
 
     public:
       vector<detail_level> lod_meshes;
-      mesh_lod();
+      mesh_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu);
+        /**<
+         Class constructor, initialises new object.
+
+         @param use_this_mesh_properties if true, then all the detail
+                meshes will only provide geometry, other things (such as
+                textures, lighting etc.) will be provided by this
+                mesh_lod so that all the mesh details will share them,
+                if false, then all meshes can specify their own
+                properties
+         @param keep_everything_on_gpu if true, then all the detail
+                meshes will be kept loaded on GPU (faster mesh switching
+                but less memory efficient), otherwise only current
+                detail level mesh will be loaded on GPU (slower but
+                better for memory)
+         */
 
       int get_current_detail_level();
         /**<
@@ -1166,7 +1182,7 @@ mesh_3d_static *make_sphere(float radius, unsigned int height_segments, unsigned
    @return instance of the sphere mesh
    */
 
-mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap);
+mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap, float crop_x, float crop_y, float crop_width, float crop_height);
   /**<
    Makes a terrain mesh based on heightmap stored as image in texture.
 
@@ -1176,6 +1192,10 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
    @param resolution_x x resolution of the terrain
    @param resolution_y y resolution of the terrain
    @param heightmap heightmap image, only red component is taken into account
+   @param crop_x x coordination in the range <0,1> of the starting cropping point
+   @param crop_y y coordination in the range <0,1> of the starting cropping point
+   @param crop_width width of the cropping rectangle (in the range <0,1>)
+   @param crop_height height of the cropping rectangle (in the range <0,1>)
    @return generated terrain mesh
    */
 
@@ -1401,6 +1421,19 @@ float get_distance(point_3d point1, point_3d point2)
   dz = point1.z - point2.z;
 
   return sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+//----------------------------------------------------------------------
+
+float clamp(float what, float minimum, float maximum)
+
+{
+  if (what > maximum)
+    return maximum;
+  else if (what < minimum)
+    return minimum;
+  else
+    return what;
 }
 
 //----------------------------------------------------------------------
@@ -2424,7 +2457,7 @@ unsigned int texture_2d::get_height()
 
 //----------------------------------------------------------------------
 
-mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap)
+mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap, float crop_x, float crop_y, float crop_width, float crop_height)
 
 {
   mesh_3d_static *result;
@@ -2433,6 +2466,17 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
   unsigned char r,g,b;
   int x,y;
   int indexes[4];
+  unsigned int crop_x_pixels,crop_y_pixels,crop_width_pixels,crop_height_pixels;
+
+  crop_x = clamp(crop_x,0,1);
+  crop_y = clamp(crop_y,0,1);
+  crop_width = clamp(crop_width,0,1);
+  crop_height = clamp(crop_height,0,1);
+
+  crop_x_pixels = (heightmap->get_width() - 1) * crop_x;
+  crop_y_pixels = (heightmap->get_height() - 1) * crop_y;
+  crop_width_pixels = (heightmap->get_width() - 1) * crop_width;
+  crop_height_pixels = (heightmap->get_height() - 1) * crop_height;
 
   result = make_plane(size_x,size_y,resolution_x,resolution_y);
 
@@ -2471,8 +2515,8 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
   if (heightmap != NULL)
     for (i = 0; i < result->vertices.size(); i++)
       {
-        x = ((result->vertices[i].position.x + size_x / 2.0) / size_x) * (heightmap->get_width() - 1);
-        y = ((result->vertices[i].position.z + size_y / 2.0) / size_y) * (heightmap->get_height() - 1);
+        x = ((result->vertices[i].position.x + size_x / 2.0) / size_x) * crop_width_pixels + crop_x_pixels;
+        y = ((result->vertices[i].position.z + size_y / 2.0) / size_y) * crop_height_pixels + crop_y_pixels;
 
         heightmap->get_pixel(x,y,&r,&g,&b);
 
@@ -4298,10 +4342,12 @@ bool mesh_3d::get_visibility()
 
 //----------------------------------------------------------------------
 
-mesh_lod::mesh_lod()
+mesh_lod::mesh_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu)
 
 {
   this->active_level = -1;
+  this->use_this_mesh_properties = use_this_mesh_properties;
+  this->keep_everything_on_gpu = keep_everything_on_gpu;
 }
 
 //----------------------------------------------------------------------
@@ -4375,6 +4421,7 @@ void mesh_lod::draw()
   if (global_recompute_lod)
     {
       double dx,dy,dz,distance;
+      int level_before = this->active_level;
 
       dx = this->position.x - camera.position.x;
       dy = this->position.y - camera.position.y;
@@ -4405,6 +4452,20 @@ void mesh_lod::draw()
           this->active_level = -1;
           return;
         }
+
+      if (!this->keep_everything_on_gpu && level_before != this->active_level) // reupload data on GPU
+        {
+          unsigned int i;
+
+          for (i = 0; i < this->lod_meshes.size(); i++)
+            if (this->lod_meshes[i].mesh != NULL)
+              {
+                if ((int) i == this->active_level)
+                  this->lod_meshes[i].mesh->update();
+                else
+                  this->lod_meshes[i].mesh->unload();
+              }
+        }
     }
 
   if (this->active_level < 0)
@@ -4418,9 +4479,13 @@ void mesh_lod::draw()
       if (!this->visible)
         return;
 
-      this->texture = mesh_to_draw->get_texture(1);
-      this->texture2 = mesh_to_draw->get_texture(2);
-      this->mesh_render_mode = mesh_to_draw->get_render_mode();
+      if (this->use_this_mesh_properties)
+        {
+          this->texture = mesh_to_draw->get_texture(1);
+          this->texture2 = mesh_to_draw->get_texture(2);
+          this->mesh_render_mode = mesh_to_draw->get_render_mode();
+        }
+
       mesh_to_draw->get_vbo_ibo_vao(&mesh_vbo,&mesh_ibo,&mesh_vao);
       this->init_rendering();
       glBindVertexArray(mesh_vao);
