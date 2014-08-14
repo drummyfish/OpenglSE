@@ -3,6 +3,7 @@ implemented features:
 - multiplatform C++ 3D engine based on OpenGL
 - extremely easy to use (single C++ header file)
 - basic keyboard input handling
+- mouse input handling
 - advanced input handling (keyboard up and down events)
 - possibility to automatically generate mesh normals
 - 3D triangle mesh rendering, supports normals and texture coordinates for each vertex
@@ -31,9 +32,9 @@ implemented features:
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
 - LOD for static meshes (multiple meshes being switched depending on the distance)
 - very simple shadows (blobs underneath objects)
+- interpolation functions (for camera movement etc.)
 
 to-do:
-- mouse input handling
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)
@@ -41,7 +42,6 @@ to-do:
 - simple collision detection
 - simple physics
 - terrain seamless LOD
-- simple Bezier/linear curves and interpolation functions (for camera movement etc.)
 
 classes (to-do):
 

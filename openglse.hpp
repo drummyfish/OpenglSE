@@ -1111,6 +1111,15 @@ void register_advanced_keyboard_function(void (*function)(bool key_up, int key, 
           key press or key release)
    */
 
+void register_mouse_function(void (*function)(int button, int state));
+  /**<
+   Registers given function to be called when mouse button press occurs.
+   To regularly check mouse coordinations get_mouse_position function
+   can be used in the main rendering loop.
+
+   @param function function to be registered
+  */
+
 int get_time();
   /**<
    Gets the current time count.
@@ -1264,6 +1273,23 @@ void set_mouse_position(unsigned int x, unsigned int y);
    @param y y position of the mouse cursor
    */
 
+void set_mouse_visibility(bool visible);
+  /**<
+   Makes the mouse cursor visible or invisible.
+
+   @param visible if true, the cursor will be visible, invisible
+          otherwise
+   */
+
+void get_mouse_position(int *x, int *y);
+  /**<
+   Gets the current mouse position relative to upper left corner of the
+   window.
+
+   @param x in this variable the x coordination in pixels will be returned
+   @param y in this variable the y coordination in pixels will be returned
+   */
+
 void set_fog(float distance);
   /**<
    Sets the fog distance. The fog color is determined by the background
@@ -1276,12 +1302,15 @@ void set_fog(float distance);
 // global variables:
 
 unsigned int global_window_width, global_window_height;
+unsigned int global_window_center[2];
 void (*user_render_function)(void) = NULL;                         /// pointer to user specified loop render function
 void (*user_keyboard_function)(int key, int x, int y) = NULL;      /// pointer to user specified keypress function
 void (*user_advanced_keyboard_function)(bool key_up, int key, int x, int y) = NULL;
+void (*user_mouse_function)(int button, int state) = NULL;
 float global_fov, global_near, global_far;                         /// perspective parameters
 float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
 bool global_recompute_lod = false;                                 /// flag that tells the mesh_lod objects to recompute their LODs
+int global_mouse_position[2];
 
 int global_frame_counter = 0;                                      /// for FPS
 int global_last_time = 0;                                          /// for FPS
@@ -1336,6 +1365,7 @@ struct camera_struct                                                            
   float movement_speed = 0.01;         /// camera movement speed (distance per millisecond) used by camera handling function
   float rotation_speed = 0.1;          /// camera rotation speed (angles per millisecond)
   bool limit_x_rotation = true;        /// this disallows camera handling function to rotate around x more than allowed (classic FPS behaviour)
+  bool use_mouse_for_rotation = true;  /// if true, the mouse movement rotates the camera, otherwise keys are used and mouse can be moved freely
 
   int key_go_forward = SPECIAL_KEY_UP;
   int key_go_backward = SPECIAL_KEY_DOWN;
@@ -1635,6 +1665,32 @@ void multiply_vector_matrix(float vector[4], float matrix[4][4], float vector_re
   for (i = 0; i < 4; i++)
     vector_result[i] = vector[0] * matrix[i][0] + vector[1] * matrix[i][1] +
                        vector[2] * matrix[i][2] + vector[3] * matrix[i][3];
+}
+
+//----------------------------------------------------------------------
+
+void mouse_move_function(int x, int y)
+
+  /**<
+    This function is internally registered as a mouse move function and
+    updates the global mouse coordinations.
+  */
+
+{
+  global_mouse_position[0] = x;
+  global_mouse_position[1] = y;
+}
+
+//----------------------------------------------------------------------
+
+void mouse_click_function(int button, int state, int x, int y)
+
+{
+  global_mouse_position[0] = x;
+  global_mouse_position[1] = y;
+
+  if (user_mouse_function != NULL)
+    user_mouse_function(button,state);
 }
 
 //----------------------------------------------------------------------
@@ -3704,10 +3760,32 @@ void camera_struct::handle_fps()
   else if (global_keyboard_state[camera.key_go_down])
     this->go(DIRECTION_DOWN,distance_to_go);
 
-  if (global_keyboard_state[camera.key_rotate_x_cw])
-    this->rotate(-1 *angle_to_rotate,0,0);
-  else if (global_keyboard_state[camera.key_rotate_x_ccw])
-    this->rotate(angle_to_rotate,0,0);
+  if (use_mouse_for_rotation)
+    {
+      int mouse_dx = global_window_center[0] - global_mouse_position[0];
+      int mouse_dy = global_window_center[1] - global_mouse_position[1];
+
+      set_mouse_position(global_window_center[0],global_window_center[1]);
+
+      this->rotate(-1 * angle_to_rotate * mouse_dy,-1 * angle_to_rotate * mouse_dx,0);
+    }
+  else
+    {
+      if (global_keyboard_state[camera.key_rotate_x_cw])
+        this->rotate(-1 *angle_to_rotate,0,0);
+      else if (global_keyboard_state[camera.key_rotate_x_ccw])
+        this->rotate(angle_to_rotate,0,0);
+
+      if (global_keyboard_state[camera.key_rotate_y_cw])
+        this->rotate(0,angle_to_rotate,0);
+      else if (global_keyboard_state[camera.key_rotate_y_ccw])
+        this->rotate(0,-1 * angle_to_rotate,0);
+
+      if (global_keyboard_state[camera.key_rotate_z_cw])
+        this->rotate(0,0,angle_to_rotate);
+      else if (global_keyboard_state[camera.key_rotate_z_ccw])
+        this->rotate(0,0,-1 * angle_to_rotate);
+    }
 
   if (this->limit_x_rotation)
     {
@@ -3719,16 +3797,6 @@ void camera_struct::handle_fps()
       else if (camera_rotation.x > 90 && camera_rotation.x < 270.0)
         this->set_rotation(90.0,camera_rotation.y,camera_rotation.z);
     }
-
-  if (global_keyboard_state[camera.key_rotate_y_cw])
-    this->rotate(0,angle_to_rotate,0);
-  else if (global_keyboard_state[camera.key_rotate_y_ccw])
-    this->rotate(0,-1 * angle_to_rotate,0);
-
-  if (global_keyboard_state[camera.key_rotate_z_cw])
-    this->rotate(0,0,angle_to_rotate);
-  else if (global_keyboard_state[camera.key_rotate_z_ccw])
-    this->rotate(0,0,-1 * angle_to_rotate);
 }
 
 //----------------------------------------------------------------------
@@ -4440,6 +4508,17 @@ void mesh_lod::unload()
 
 //----------------------------------------------------------------------
 
+void set_mouse_visibility(bool visible)
+
+{
+  if (visible)
+    glutSetCursor(GLUT_CURSOR_LEFT_ARROW);
+  else
+    glutSetCursor(GLUT_CURSOR_NONE);
+}
+
+//----------------------------------------------------------------------
+
 void mesh_lod::clear()
 
 {
@@ -4542,6 +4621,14 @@ void mesh_3d_animated::clear()
 
 //----------------------------------------------------------------------
 
+void register_mouse_function(void (*function)(int button, int state))
+
+{
+  user_mouse_function = function;
+}
+
+//----------------------------------------------------------------------
+
 texture_2d *mesh_3d::get_texture(unsigned int texture_no)
 
 {
@@ -4592,6 +4679,15 @@ void mesh_3d_animated::set_speed(float speed)
 
 {
   this->play_speed = speed;
+}
+
+//----------------------------------------------------------------------
+
+void get_mouse_position(int *x, int *y)
+
+{
+  *x = global_mouse_position[0];
+  *y = global_mouse_position[1];
 }
 
 //----------------------------------------------------------------------
@@ -4739,6 +4835,9 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
 {
   global_window_width = window_width;
   global_window_height = window_height;
+  global_window_center[0] = window_width / 2;
+  global_window_center[1] = window_height / 2;
+
   global_fov = 95;
   global_near = 0.05;
   global_far = 100;
@@ -4756,6 +4855,8 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   glutKeyboardUpFunc(helper_advanced_keyboard_function);
   glutSpecialUpFunc(helper_advanced_special_keyboard_function);
   glutSpecialFunc(helper_special_function);
+  glutPassiveMotionFunc(mouse_move_function);
+  glutMouseFunc(mouse_click_function);
   glutReshapeFunc(reshape_function);
   glClearColor(0.0f,0.0f,0.0f,0.0f);
   glewInit();
