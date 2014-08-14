@@ -9,6 +9,7 @@
 #define GLEW_STATIC
 #define PI 3.1415926535897932384626
 #define PI_DIVIDED_180 0.01745329251
+#define PI_DIVIDED_2 1.57079632679
 #define RECOMPUTE_FRAMES 128            // after how many frames things like FPS or LOD are recomputed
 #define MAX_ANIMATION_FRAMES 32
 #define MAX_SHADOWS 64                  // maximum number of shadows on the mesh surface
@@ -267,6 +268,13 @@ typedef struct                      /// simple shadow properties
     float radius;
     float brightness;               /// shadow brightness in range <-1,1>
   } shadow;
+
+typedef enum                        /// possible interpolation methods
+  {
+    INTERPOLATION_LINEAR,
+    INTERPOLATION_SINE,
+    INTERPOLATION_CONSTANT
+  } interpolation_method;
 
 //------------------------------------
 
@@ -1060,6 +1068,19 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
    @param window_title window title
   */
 
+float interpolate(float ratio, float value1, float value2, interpolation_method method);
+  /**<
+   Interpolates between two values using specified method.
+
+   @param ratio value in range <0,1> where 0 will return the first
+          point value, 1 the second one and the values between will be
+          interpolated
+   @param value1 first value to be interpolated between
+   @param value2 second value to be interpolated between
+   @param method method to use
+   @return value interpolated between value1 and value2 in given ratio
+   */
+
 void set_perspective(float fov_degrees, float near, float far);
   /**<
    Sets the perspective for the rendering.
@@ -1233,6 +1254,14 @@ void set_background_color(unsigned char red, unsigned char green, unsigned char 
    @param red amount of red
    @param green amount of green
    @param blue amount of blue
+   */
+
+void set_mouse_position(unsigned int x, unsigned int y);
+  /**<
+   Sets the mouse position relatively to the window top left corner.
+
+   @param x x position of the mouse cursor
+   @param y y position of the mouse cursor
    */
 
 void set_fog(float distance);
@@ -3430,6 +3459,14 @@ void register_advanced_keyboard_function(void (*function)(bool key_up, int key, 
 
 //----------------------------------------------------------------------
 
+void set_mouse_position(unsigned int x, unsigned int y)
+
+{
+  glutWarpPointer(x,y);
+}
+
+//----------------------------------------------------------------------
+
 void set_perspective(float fov_degrees, float near_plane, float far_plane)
 
 {
@@ -4555,6 +4592,31 @@ void mesh_3d_animated::set_speed(float speed)
 
 {
   this->play_speed = speed;
+}
+
+//----------------------------------------------------------------------
+
+float interpolate(float ratio, float value1, float value2, interpolation_method method)
+
+{
+  clamp(ratio,0.0,1.0);
+
+  switch (method)
+    {
+      case INTERPOLATION_LINEAR:
+        return ratio * value2 + (1.0 - ratio) * value1;
+        break;
+
+      case INTERPOLATION_SINE:
+        ratio = cos(ratio * PI) * 0.5 + 0.5;
+
+        return ratio * value1 + (1.0 - ratio) * value2;
+        break;
+
+      default:
+        return value1;
+        break;
+    }
 }
 
 //----------------------------------------------------------------------

@@ -29,27 +29,33 @@ implemented features:
 - texture layering (mesh with 2 textures, vertices have specified weight to blend between tham, for example for terrain)
 - basic mesh operations (vertex and mesh merging, decreasing polygon count etc.)
 - basic key-frame vertex-blend based animations (possibility to load each keyframe from one OBJ file), interpolating or just switching between the frames
+- LOD for static meshes (multiple meshes being switched depending on the distance)
 - very simple shadows (blobs underneath objects)
 
 to-do:
 - mouse input handling
-- LOD (multiple meshes being switched depending on the distance)
 - text rendering
 - 2D image rendering
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
 - simple physics
+- terrain seamless LOD
 - simple Bezier/linear curves and interpolation functions (for camera movement etc.)
 
 classes (to-do):
 
-gpu_data               something that can be uploaded to GPU
-  mesh_3d              abstract, 3D triangle model            
-    mesh_3d_static     non-animated 3D mesh
-    mesh_3d_animated   animated 3D mesh
-    mesh_lod           set of multiple meshes that are being switched between depending on their distance
-  texture_2d           texture to be associated with a mesh
+gpu_object                something that can be put on GPU
+  gpu_drawable            something that can be directly drawn
+    mesh_3d               abstract 3D model composed of triangles            
+      mesh_3d_static      non-animated 3D mesh
+      mesh_3d_animated    animated 3D mesh
+      mesh_lod            set of multiple meshes that are being switched between depending on their distance from camera
+    picture_2d            displays given texture as 2D image 
+    text_2d               displays given text
+  texture_2d              texture to be associated with a mesh
+keyframe_interpolater     function that interpolates between given set of points (for camera movement etc.)
+
 picture_2d
 
 instalation:
