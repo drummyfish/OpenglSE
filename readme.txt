@@ -33,10 +33,10 @@ implemented features:
 - LOD for static meshes (multiple meshes being switched depending on the distance)
 - very simple shadows (blobs underneath objects)
 - interpolation functions (for camera movement etc.)
+- 2D image rendering
 
 to-do:
 - text rendering
-- 2D image rendering
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
@@ -47,11 +47,11 @@ classes (to-do):
 
 gpu_object                something that can be put on GPU
   gpu_drawable            something that can be directly drawn
-    mesh_3d               abstract 3D model composed of triangles            
+    mesh_3d               abstract 3D model composed of triangles
       mesh_3d_static      non-animated 3D mesh
       mesh_3d_animated    animated 3D mesh
       mesh_lod            set of multiple meshes that are being switched between depending on their distance from camera
-    picture_2d            displays given texture as 2D image 
+    picture_2d            displays given texture as 2D image
     text_2d               displays given text
   texture_2d              texture to be associated with a mesh
 keyframe_interpolater     function that interpolates between given set of points (for camera movement etc.)

@@ -57,6 +57,7 @@ char shader_vertex[] =
 "uniform uint render_mode;                                    \n"
 "uniform float fog_distance;                                  \n"
 "uniform float far_plane;          // far plane distance      \n"
+"uniform bool draw_2d;             // of true, the view and perspective transforms won't be performed \n"
 "                                                             \n"
 "out vec2 uv_coordination;                                    \n"
 "out float texture_ratio;                                     \n"
@@ -83,9 +84,13 @@ char shader_vertex[] =
 "    transformed_normal = normal; }                           \n"
 "                                                             \n"
 "  transformed_position = (world_matrix * vec4(transformed_position,1.0)).xyz;                         \n"
-"  gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                    \n"
-"  uv_coordination = texture_coordination;                                                             \n"
 "  transformed_normal = normalize((world_matrix * vec4(transformed_normal,0.0)).xyz);                  \n"
+"  uv_coordination = texture_coordination;                                                             \n"
+"                                                                                                      \n"
+"  if (!draw_2d)                                                                                       \n"
+"    gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                  \n"
+"  else                                                                                                \n"
+"    gl_Position = vec4(transformed_position,1.0);                                                     \n"
 "                                                                                                      \n"
 "   if (textures == uint(2))                                                                           \n"
 "    texture_ratio = texture_blend_ratio;                                                              \n"
@@ -139,6 +144,7 @@ char shader_fragment[] =
 "uniform bool use_fog;                                        \n"
 "uniform uint number_of_shadows;                              \n"
 "uniform float shadows[256];                                  \n"
+"uniform bool draw_2d;             // of true, the view and perspective transforms won't be performed \n"
 "                                                             \n"
 "vec3 transparent_color_difference;   // helper variable      \n"
 "vec3 reflection_vector;                                      \n"
@@ -178,9 +184,12 @@ char shader_fragment[] =
 "  if (transparency_enabled) {                                \n"
 "    transparent_color_difference = FragColor.xyz - transparent_color; \n"
 "                                                                      \n"
-"    if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordination \n"
+"  if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordination \n"
 "      gl_FragDepth = 1.1;     // transparent color           \n"
 "    }                                                        \n"
+"                                                             \n"
+"  if (draw_2d)                                               \n"
+"    gl_FragDepth = 0.0;                                      \n"
 "                                                             \n"
 "  FragColor = FragColor * vec4(helper_intensity,helper_intensity,helper_intensity,1.0) * vec4(light_color,1.0); \n"
 "                                                             \n"
@@ -231,14 +240,14 @@ typedef enum
     ROTATION_YXZ                    /// rotation around y first, then x and then z (standard for camera)
   } rotation_matrix_type;
 
-typedef struct                      /// a point in 3D space
+typedef struct                      /// point in 3D space
   {
     float x;
     float y;
     float z;
   } point_3d;
 
-typedef struct                      /// a vertice in 3D space
+typedef struct                      /// vertex in 3D space
   {
     point_3d position;
     float texture_coordination[2];
@@ -246,7 +255,7 @@ typedef struct                      /// a vertice in 3D space
     float texture_blend_ratio;      /// for texture blending
   } vertex_3d;
 
-typedef struct                      /// a triangle represented as three vertex indices
+typedef struct                      /// triangle represented as three vertex indices
   {
     unsigned int index1;
     unsigned int index2;
@@ -278,7 +287,35 @@ typedef enum                        /// possible interpolation methods
 
 //------------------------------------
 
-class texture_2d   /// represents a texture, it's x and y size must be power of 2
+class gpu_object                       /// something that can be put on GPU
+  {
+    public:
+      virtual void update() = 0;
+        /**<
+         Uploads the object to GPU, should be called in order for
+         changes to take effect.
+        */
+
+      virtual void unload() = 0;
+        /**<
+         Unloads the object from GPU.
+         */
+  };
+
+//------------------------------------
+
+class gpu_drawable: public gpu_object  /// something that can be directly drawn using GPU
+  {
+    public:
+      virtual void draw() = 0;
+        /**<
+         Draws the object using GPU.
+        */
+  };
+
+//------------------------------------
+
+class texture_2d: public gpu_object    /// represents a texture, it's x and y size must be power of 2
   {
     protected:
       unsigned int width;
@@ -347,11 +384,6 @@ class texture_2d   /// represents a texture, it's x and y size must be power of 
          @param red in this variable the amount of red will be returned
          @param green in this variable the amount of green will be returned
          @param blue in this variable the amount of blue will be returned
-         */
-
-      void update();
-        /**<
-         Updates the texture (loads its data to the GPU).
          */
 
       void set_pixel(int x, int y, unsigned char red, unsigned char green, unsigned char blue);
@@ -423,11 +455,14 @@ class texture_2d   /// represents a texture, it's x and y size must be power of 
 
          @param texture hright in pixels
          */
+
+      virtual void update();
+      virtual void unload();
   };
 
 //------------------------------------
 
-class mesh_3d      /// an abstract class of 3D mesh made of triangles
+class mesh_3d: public gpu_drawable    /// an abstract class of 3D mesh made of triangles
   {
     protected:
       point_3d position;
@@ -634,25 +669,8 @@ class mesh_3d      /// an abstract class of 3D mesh made of triangles
         */
 
       virtual void update() = 0;
-        /**<
-         This should be called if the models vertices or triangles have
-         changed to reupload the model to the GPU. There's no need to
-         call this method when position, rotation or scale of the model
-         have been changed. This method doesn nothing if the mesh is an
-         instance of another mesh.
-        */
-
       virtual void unload() = 0;
-        /**<
-         Unloads the mesh data from GPU freeing some of its memory. The
-         mesh will still keep its data in RAM and can be loaded later
-         into GPU again using update() method.
-         */
-
       virtual void draw() = 0;
-        /**<
-         Draws the model.
-        */
   };
 
 //------------------------------------
@@ -957,6 +975,52 @@ class mesh_3d_animated: public mesh_3d
       virtual void unload();
       virtual void clear();
       virtual void draw();
+  };
+
+//------------------------------------
+
+class picture_2d: public gpu_drawable /// 2D picture that can be drawn (for example for GUI)
+  {
+    protected:
+      mesh_3d_static picture_mesh;    /// 2 triangles that will be textured with the image
+
+    public:
+      picture_2d();
+      ~picture_2d();
+
+      void set_picture(texture_2d *picture);
+        /**<
+         Sets the picture to be displayed.
+
+         @param picture picture to be displayed
+         */
+
+      void set_position(float x, float y);
+        /**<
+         Sets the picture position on the screen.
+
+         @param x x position in range <0,1>
+         @param y y position in range <0,1>
+         */
+
+      void set_size(float width, float height);
+        /**<
+         Sets the picture size.
+
+         @param width width in range <0,1>
+         @param height height in range <0,1>
+         */
+
+      void set_rotation(float degrees);
+        /**<
+         Sets the picture rotation
+
+         @param angles rotation angle in degrees
+         */
+
+      virtual void draw();
+      virtual void update();
+      virtual void unload();
   };
 
 //------------------------------------
@@ -1348,6 +1412,7 @@ GLuint background_color_location;
 GLuint frame_percentage_location;
 GLuint number_of_shadows_location;
 GLuint shadows_location;
+GLuint draw_2d_location;
 
 struct camera_struct                                                            /// represents a camera
 {
@@ -2042,6 +2107,7 @@ bool compile_shaders()
   frame_percentage_location = glGetUniformLocation(shader_program,"frame_percentage");
   number_of_shadows_location = glGetUniformLocation(shader_program,"number_of_shadows");
   shadows_location = glGetUniformLocation(shader_program,"shadows");
+  draw_2d_location = glGetUniformLocation(shader_program,"draw_2d");
 
   return true;
 }
@@ -4245,13 +4311,22 @@ void texture_2d::update()
 
 //----------------------------------------------------------------------
 
+void texture_2d::unload()
+
+{
+  if (this->to > 0)
+    glDeleteTextures(1,&this->to);
+}
+
+//----------------------------------------------------------------------
+
 texture_2d::~texture_2d()
 
 {
+  this->unload();
+
   if (this->data != NULL)
     free(this->data);
-
-  glDeleteTextures(1,&this->to);
 }
 
 //----------------------------------------------------------------------
@@ -4314,6 +4389,97 @@ void mesh_3d_animated::make_instance_of(mesh_3d_animated *what)
     }
 
   this->instance_parent = what;
+}
+
+//----------------------------------------------------------------------
+
+picture_2d::picture_2d()
+
+{
+  this->picture_mesh.set_render_mode(RENDER_MODE_NO_LIGHT);
+  this->picture_mesh.add_vertex(0,0,0,0,0,0,0,1);  // z coordination doesn't matter
+  this->picture_mesh.add_vertex(1,0,0,1,0,0,0,1);
+  this->picture_mesh.add_vertex(0,1,0,0,1,0,0,1);
+  this->picture_mesh.add_vertex(1,1,0,1,1,0,0,1);
+
+  this->set_position(0,0);
+  this->set_rotation(0);
+  this->set_size(0.5,0.5);
+
+  this->picture_mesh.add_triangle(0,2,1);
+  this->picture_mesh.add_triangle(1,2,3);
+}
+
+//----------------------------------------------------------------------
+
+picture_2d::~picture_2d()
+
+{
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::set_picture(texture_2d *picture)
+
+{
+  this->picture_mesh.set_texture(picture);
+  this->update();
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::set_position(float x, float y)
+
+{
+  x = clamp(x,0.0,0.1) * 2 - 1.0;
+  y = clamp(y,0.0,0.1) * 2 - 1.0;
+
+  this->picture_mesh.set_position(x,y,0);
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::set_rotation(float degrees)
+
+{
+  this->picture_mesh.set_rotation(0,0,degrees);
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::draw()
+
+{
+  glUniform1ui(draw_2d_location,1);
+  this->picture_mesh.draw();
+  glUniform1ui(draw_2d_location,0);
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::update()
+
+{
+  this->picture_mesh.update();
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::unload()
+
+{
+  this->picture_mesh.unload();
+}
+
+//----------------------------------------------------------------------
+
+void picture_2d::set_size(float width, float height)
+
+{
+  width = clamp(width,0.0,1.0) * 2;
+  height = clamp(height,0.0,1.0) * 2;
+
+  this->picture_mesh.set_scale(width,height,1.0);
 }
 
 //----------------------------------------------------------------------
@@ -4870,6 +5036,7 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   camera.set_rotation(0,0,0);
   glUniform1i(texture_unit_location,0);    // we'll always be using the unit 0 for the first texture layer
   glUniform1i(texture2_unit_location,1);   // 1 for the second texture layer
+  glUniform1ui(draw_2d_location,0);
 
   point_3d light_direction;
 
