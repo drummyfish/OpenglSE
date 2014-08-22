@@ -36,7 +36,7 @@ implemented features:
 - 2D image rendering
 
 to-do:
-- text rendering
+- ASCII text rendering
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
@@ -55,8 +55,6 @@ gpu_object                something that can be put on GPU
     text_2d               displays given text
   texture_2d              texture to be associated with a mesh
 keyframe_interpolater     function that interpolates between given set of points (for camera movement etc.)
-
-picture_2d
 
 instalation:
 - install GLEW and FREEGLUT:
