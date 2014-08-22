@@ -1094,7 +1094,7 @@ class picture_2d: public gpu_drawable /// 2D picture that can be drawn (for exam
 
     public:
       picture_2d();
-      ~picture_2d();
+      virtual ~picture_2d();
 
       void set_picture(texture_2d *picture);
         /**<
@@ -1111,6 +1111,13 @@ class picture_2d: public gpu_drawable /// 2D picture that can be drawn (for exam
          @param y y position in range <0,1>
          */
 
+      mesh_3d_static* get_picture_mesh();
+        /**<
+         Gets the internal mesh that is used to display the image.
+
+         @return pointer to picture mesh
+         */
+
       void set_size(float width, float height);
         /**<
          Sets the picture size.
@@ -1124,6 +1131,47 @@ class picture_2d: public gpu_drawable /// 2D picture that can be drawn (for exam
          Sets the picture rotation
 
          @param angles rotation angle in degrees
+         */
+
+      virtual void draw();
+      virtual void update();
+      virtual void unload();
+  };
+
+//------------------------------------
+
+class text_2d: public gpu_drawable    /// allows to display ASCII text
+  {
+    protected:
+      picture_2d text_picture;
+      texture_2d *font;
+      string text;
+
+    public:
+      text_2d();
+
+      void set_text(string text);
+        /**<
+         Sets the text to be displayed by the object.
+
+         @param text ASCII text to be displayed
+         */
+
+      void set_font(texture_2d *font);
+        /**<
+         Sets the text font.
+
+         @param font texture representing fixed-size font, it must be
+                composed of 256 text characters, one next to another
+                from left to right in ASCII order, the image size
+                doesn't matter, it will be divided to 256 characters
+         */
+
+      texture_2d* get_font();
+        /**<
+         Gets the font set for the text.
+
+         @return font texture (see set_font for details)
          */
 
       virtual void draw();
@@ -1401,6 +1449,20 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
    @return generated terrain mesh
    */
 
+picture_2d *make_text(string text, texture_2d *font, float size = 0.05, float spacing = 0.03);
+  /**<
+   Makes a picture of given ASCII text.
+
+   @param text text to be displayed
+   @param font font to be used, if NULL, the default font will be used,
+          the texture should contain exactly 256 characters one next to
+          another from left to right in ASCII order, the size doesn't
+          matter
+   @param size font size
+   @param spacing spacing of the characters
+   @return picture representing given text
+   */
+
 float get_fps();
   /**<
    Returns current FPS. FPS is being recomputed after every RECOMPUTE_FRAMES
@@ -1660,28 +1722,35 @@ float get_distance(point_3d point1, point_3d point2)
 //----------------------------------------------------------------------
 
 void load_default_font()
-
   /**<
    Loads the default global font texture (global_default_font).
    */
 
 {
-  unsigned int i,j,index;
+  unsigned int i,j,index,x_position;
 
-  global_default_font.initialise(1280,7);  // 1280 = 256 (number of characters) * 5 (character width)
+  global_default_font.initialise(1280 + 256,8);  // 1280 = 256 (number of characters) * 5 (character width), + 256 = space perofe each character
   global_default_font.set_transparent_color(255,255,255);
   global_default_font.set_transparency(true);
 
   index = 0;
 
   for (j = 0; j < 7; j++)
-    for (i = 0; i < 470; i++)              // 470 = width of default font pixel data
-      {
-        if (default_font_data[index] != 0)
-          global_default_font.set_pixel(i + 166,j,0,0,0); // 166 = offset
+    {
+      x_position = 198;
 
-        index++;
-      }
+      for (i = 0; i < 470; i++)              // 470 = width of default font pixel data
+        {
+          if (i % 5 == 0)
+            x_position++;
+
+          if (default_font_data[index] != 0)
+            global_default_font.set_pixel(x_position,j,0,0,0); // 166 = offset
+
+          x_position++;
+          index++;
+        }
+    }
 
   global_default_font.update();
 }
@@ -4293,6 +4362,14 @@ void mesh_3d_static::print_data()
 
 //----------------------------------------------------------------------
 
+mesh_3d_static* picture_2d::get_picture_mesh()
+
+{
+  return &this->picture_mesh;
+}
+
+//----------------------------------------------------------------------
+
 void set_background_color(unsigned char red, unsigned char green, unsigned char blue)
 
 {
@@ -4986,6 +5063,46 @@ void mesh_3d_static::merge(mesh_3d_static *mesh)
     this->vertices.push_back(mesh->vertices[i]);
 
   this->update();
+}
+
+//----------------------------------------------------------------------
+
+picture_2d *make_text(string text, texture_2d *font, float size, float spacing)
+
+{
+  picture_2d *result_picture;
+  mesh_3d_static *picture_mesh;
+  unsigned char character;
+  unsigned int i;
+  float dx;
+
+  result_picture = new picture_2d();
+  picture_mesh = result_picture->get_picture_mesh();
+
+  if (font == NULL)
+    result_picture->set_picture(&global_default_font);
+  else
+    result_picture->set_picture(font);
+
+  picture_mesh->clear();
+
+  for (i = 0; i < text.length(); i++)
+    {
+      character = text[i];
+      dx = 1 / 256.0;
+
+      picture_mesh->add_vertex(0   + i *  (size + spacing),0,0,      character * dx,1,       0,0,1);  // z coordination doesn't matter
+      picture_mesh->add_vertex(size + i * (size + spacing),0,0,      character * dx + dx,1,  0,0,1);
+      picture_mesh->add_vertex(0   + i *  (size + spacing),size,0,    character * dx,0,       0,0,1);
+      picture_mesh->add_vertex(size + i * (size + spacing),size,0,    character * dx + dx,0,  0,0,1);
+
+      picture_mesh->add_triangle(0 + i * 4,2 + i * 4,1 + i * 4);
+      picture_mesh->add_triangle(1 + i * 4,2 + i * 4,3 + i * 4);
+    }
+
+  result_picture->update();
+
+  return result_picture;
 }
 
 //----------------------------------------------------------------------

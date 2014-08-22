@@ -52,14 +52,13 @@ gpu_object                something that can be put on GPU
       mesh_3d_animated    animated 3D mesh
       mesh_lod            set of multiple meshes that are being switched between depending on their distance from camera
     picture_2d            displays given texture as 2D image
-    text_2d               displays given text
   texture_2d              texture to be associated with a mesh
-keyframe_interpolater     function that interpolates between given set of points (for camera movement etc.)
+keyframe_interpolator     function that interpolates between given set of points (for camera movement etc.)
 
 instalation:
 - install GLEW and FREEGLUT:
   - Fedora: yum install glew-devel freeglut-devel
 - include openglse.hpp in your sourcecode and use namespace gl_se
-- link with GCC:
+- compile and link with GCC:
   - on Windows add these flags: -lfreeglut -lglew32s -lopengl32
   - on Linux add these flags: -lfreeglut -lglew32s -lopengl32
