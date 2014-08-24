@@ -42,6 +42,7 @@ to-do:
 - simple collision detection
 - simple physics
 - terrain seamless LOD
+- documentation and example program included
 
 classes (to-do):
 

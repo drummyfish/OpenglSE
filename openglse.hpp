@@ -180,11 +180,12 @@ char shader_vertex[] =
 "    texture_ratio = mix(texture_blend_ratio,texture_blend_ratio2,frame_percentage); }    \n"
 "  else {"
 "    transformed_position = position;                         \n"
+"    uv_coordination = texture_coordination;                  \n"
 "    transformed_normal = normal; }                           \n"
 "                                                             \n"
 "  transformed_position = (world_matrix * vec4(transformed_position,1.0)).xyz;                         \n"
 "  transformed_normal = normalize((world_matrix * vec4(transformed_normal,0.0)).xyz);                  \n"
-"  uv_coordination = texture_coordination;                                                             \n"
+"                                                                                                      \n"
 "                                                                                                      \n"
 "  if (!draw_2d)                                                                                       \n"
 "    gl_Position = perspective_matrix * view_matrix * vec4(transformed_position,1.0);                  \n"
@@ -459,6 +460,11 @@ class texture_2d: public gpu_object    /// represents a texture, it's x and y si
                 disabled
          */
 
+      void flip_vertical();
+        /**<
+         Flips the texture vertically.
+         */
+
       bool transparency_is_enabled();
         /**<
          Checks if the texture has transparency enabled.
@@ -634,7 +640,7 @@ class mesh_3d: public gpu_drawable    /// an abstract class of 3D mesh made of t
          @return true if the mesh is visible, false otherwise
          */
 
-      texture_2d *get_texture(unsigned int texture_no);
+      texture_2d *get_texture(unsigned int texture_no = 0);
         /**<
          Gets the texture of this mesh.
 
@@ -800,6 +806,15 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          Class constructor.
         */
 
+      mesh_3d_static(mesh_3d_static *copy_from);
+        /**<
+         Copy constructor, makes a copy of an existing mesh. The mesh
+         must be updated with update method afterwards. This does NOT
+         make the new mesh an instance of the existing mesh.
+
+         @param copy_from static mesh to be copied
+        */
+
       virtual ~mesh_3d_static();
         /**<
          Class destructor, frees all the object's memory.
@@ -948,8 +963,8 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          Maps the texture coordinations of the vertices using planar mapping.
 
          @param direction direction of the plane normal
-         @param plane_width width of the plane
-         @param plena_height height of the plane
+         @param plane_width width of the plane, 1.0 is the width of the mesh
+         @param plena_height height of the plane, 1.0 is the height of the mesh
          */
 
       void texture_map_layer_mask(texture_2d *mask);
@@ -1257,7 +1272,15 @@ class mesh_lod: public mesh_3d        /// set of multiple static meshes that are
 
 void render_loop();
   /**<
-   Starts the rendering loop.
+   Starts the rendering loop that will continue rendering the scene
+   using function specified with init_opengl function. The loop can
+   be stopped by calling stop_rendering function. The loop also ends
+   when the window is closed by the user.
+   */
+
+void stop_rendering();
+  /**<
+   Stops the main rendering loop.
    */
 
 void draw_pixel(unsigned int x, unsigned int y, unsigned char r, unsigned char g, unsigned char b, unsigned char a);
@@ -1432,7 +1455,7 @@ mesh_3d_static *make_sphere(float radius, unsigned int height_segments, unsigned
    @return instance of the sphere mesh
    */
 
-mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap, float crop_x, float crop_y, float crop_width, float crop_height);
+mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned int resolution_x, unsigned int resolution_y, texture_2d *heightmap, float crop_x = 0.0, float crop_y = 0.0, float crop_width = 1.0, float crop_height = 1.0);
   /**<
    Makes a terrain mesh based on heightmap stored as image in texture.
 
@@ -1441,7 +1464,8 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
    @param height terrain amplitude
    @param resolution_x x resolution of the terrain
    @param resolution_y y resolution of the terrain
-   @param heightmap heightmap image, only red component is taken into account
+   @param heightmap heightmap image where lighter means higher, only red component
+          is taken into account, if NULL, the terrain will be flat
    @param crop_x x coordination in the range <0,1> of the starting cropping point
    @param crop_y y coordination in the range <0,1> of the starting cropping point
    @param crop_width width of the cropping rectangle (in the range <0,1>)
@@ -1461,6 +1485,11 @@ picture_2d *make_text(string text, texture_2d *font, float size = 0.05, float sp
    @param size font size
    @param spacing spacing of the characters
    @return picture representing given text
+   */
+
+void go_fullscreen();
+  /**<
+   Makes the window fullscreen.
    */
 
 float get_fps();
@@ -1586,7 +1615,7 @@ GLuint number_of_shadows_location;
 GLuint shadows_location;
 GLuint draw_2d_location;
 
-struct camera_struct                                                            /// represents a camera
+struct camera_struct                   /// represents a camera
 {
   point_3d position;                   /// camera position
   point_3d rotation;                   /// camera rotation (around x, y and z axis in degrees)
@@ -2415,6 +2444,9 @@ void update_view_matrix()
 void texture_2d::upload_texture_data()
 
 {
+  if (this->to == 0)
+    glGenTextures(1,&this->to);
+
   glBindTexture(GL_TEXTURE_2D,this->to);
   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,this->width,this->height,0,GL_RGB,GL_UNSIGNED_BYTE,this->data);
 
@@ -2429,6 +2461,8 @@ void reshape_function(int width, int height)
 {
   global_window_height = height;
   global_window_width = width;
+  global_window_center[0] = width / 2;
+  global_window_center[1] = height / 2;
   glViewport(0,0,width,height);
   set_perspective(global_fov,global_near,global_far);
 }
@@ -2832,10 +2866,20 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
   crop_width = clamp(crop_width,0,1);
   crop_height = clamp(crop_height,0,1);
 
-  crop_x_pixels = (heightmap->get_width() - 1) * crop_x;
-  crop_y_pixels = (heightmap->get_height() - 1) * crop_y;
-  crop_width_pixels = (heightmap->get_width() - 1) * crop_width;
-  crop_height_pixels = (heightmap->get_height() - 1) * crop_height;
+  if (heightmap != NULL)
+    {
+      crop_x_pixels = (heightmap->get_width() - 1) * crop_x;
+      crop_y_pixels = (heightmap->get_height() - 1) * crop_y;
+      crop_width_pixels = (heightmap->get_width() - 1) * crop_width;
+      crop_height_pixels = (heightmap->get_height() - 1) * crop_height;
+    }
+  else
+    {
+      crop_x_pixels = 0;
+      crop_y_pixels = 0;
+      crop_width_pixels = 1;
+      crop_height_pixels = 1;
+    }
 
   result = make_plane(size_x,size_y,resolution_x,resolution_y);
 
@@ -2874,10 +2918,14 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
   if (heightmap != NULL)
     for (i = 0; i < result->vertices.size(); i++)
       {
-        x = ((result->vertices[i].position.x + size_x / 2.0) / size_x) * crop_width_pixels + crop_x_pixels;
-        y = ((result->vertices[i].position.z + size_y / 2.0) / size_y) * crop_height_pixels + crop_y_pixels;
-
-        heightmap->get_pixel(x,y,&r,&g,&b);
+        if (heightmap != NULL)
+          {
+            x = ((result->vertices[i].position.x + size_x / 2.0) / size_x) * crop_width_pixels + crop_x_pixels;
+            y = ((result->vertices[i].position.z + size_y / 2.0) / size_y) * crop_height_pixels + crop_y_pixels;
+            heightmap->get_pixel(x,y,&r,&g,&b);
+          }
+        else
+          r = 1;
 
         result->vertices[i].position.y += r / 255.0 * height;
       }
@@ -3196,6 +3244,7 @@ bool texture_2d::load_ppm(string filename)
 
   fclose(file_handle);
 
+  this->flip_vertical();        // this must be done because of OpenGL texture handling
   // upload the data to GPU:
 
   this->upload_texture_data();
@@ -3375,7 +3424,7 @@ bool mesh_3d_static::load_obj(string filename)
 
             parse_obj_line(line,obj_line_data);
 
-            for (i = 0; i < 4; i++)     // triangle indexes
+            for (i = 0; i < 4; i++)     // triangle indices
               indices[i] = floor(obj_line_data[i][0]) - 1;
 
             if (obj_line_data[3][0] < 0.0)
@@ -3705,6 +3754,24 @@ void mesh_3d_static::texture_map_layer_mask(texture_2d *mask)
 
 //----------------------------------------------------------------------
 
+void texture_2d::flip_vertical()
+
+{
+  unsigned int i,j;
+  unsigned char r1,g1,b1,r2,g2,b2;
+
+  for (j = 0; j < this->height / 2; j++)
+    for (i = 0; i < this->width; i++)
+      {
+        this->get_pixel(i,j,&r1,&g1,&b1);
+        this->get_pixel(i,this->height - j - 1,&r2,&g2,&b2);
+        this->set_pixel(i,j,r2,g2,b2);
+        this->set_pixel(i,this->height - j - 1,r1,g1,b1);
+      }
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d::get_position(point_3d *point)
 
 {
@@ -3870,6 +3937,40 @@ mesh_3d_static::mesh_3d_static(): mesh_3d()
   this->ibo = 0;
   this->vao = 0;
   this->instance_parent = NULL;
+}
+
+//----------------------------------------------------------------------
+
+mesh_3d_static::mesh_3d_static(mesh_3d_static *copy_from): mesh_3d()
+
+{
+  unsigned int i;
+
+  this->vbo = 0;
+  this->ibo = 0;
+  this->vao = 0;
+  this->instance_parent = NULL;
+
+  this->texture = copy_from->get_texture();
+
+  for (i = 0; i < copy_from->vertex_count(); i++)
+    this->add_vertex(
+      copy_from->vertices[i].position.x,
+      copy_from->vertices[i].position.y,
+      copy_from->vertices[i].position.z,
+      copy_from->vertices[i].texture_coordination[0],
+      copy_from->vertices[i].texture_coordination[1],
+      copy_from->vertices[i].normal.x,
+      copy_from->vertices[i].normal.y,
+      copy_from->vertices[i].normal.z);
+
+  for (i = 0; i < copy_from->triangle_count(); i++)
+    this->add_triangle(
+      copy_from->triangles[i].index1,
+      copy_from->triangles[i].index2,
+      copy_from->triangles[i].index3);
+
+  this->set_render_mode(copy_from->get_render_mode());
 }
 
 //----------------------------------------------------------------------
@@ -4357,7 +4458,9 @@ void mesh_3d_static::print_data()
   for (i = 0; i < this->triangles.size(); i++)
     cout << i << ": " << this->triangles[i].index1 << ", " <<
                          this->triangles[i].index2 << ", " <<
-                         this->triangles[i].index3 << endl << endl;
+                         this->triangles[i].index3 << endl;
+
+  cout << endl;
 }
 
 //----------------------------------------------------------------------
@@ -4454,6 +4557,14 @@ void mesh_3d_static::add_vertex(float x, float y, float z)
 
 {
   this->add_vertex(x,y,z,0,0,0,0,1);
+}
+
+//----------------------------------------------------------------------
+
+void stop_rendering()
+
+{
+  glutLeaveMainLoop();
 }
 
 //----------------------------------------------------------------------
@@ -4928,6 +5039,14 @@ void mesh_lod::clear()
 
 //----------------------------------------------------------------------
 
+void go_fullscreen()
+
+{
+  glutFullScreen();
+}
+
+//----------------------------------------------------------------------
+
 void mesh_lod::draw()
 
 {
@@ -5257,7 +5376,9 @@ void mesh_3d_animated::draw()
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,effective_ibo);
 
-  glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
+  if (effective_ibo != 0)
+    glDrawElements(GL_TRIANGLES,number_of_triangles * 3,GL_UNSIGNED_INT,0);
+
   glDisableVertexAttribArray(0);
   glDisableVertexAttribArray(1);
   glDisableVertexAttribArray(2);
@@ -5298,6 +5419,7 @@ void init_opengl(int *argc_pointer, char** argv, unsigned int window_width, unsi
   glutPassiveMotionFunc(mouse_move_function);
   glutMouseFunc(mouse_click_function);
   glutReshapeFunc(reshape_function);
+  glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE,GLUT_ACTION_CONTINUE_EXECUTION);
   glClearColor(0.0f,0.0f,0.0f,0.0f);
   glewInit();
   glFrontFace(GL_CW);
