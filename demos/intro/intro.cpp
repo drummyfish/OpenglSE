@@ -14,7 +14,7 @@ using namespace gl_se;
 #define TERRAIN_TILE_FACTOR 10
 
 mesh_3d_static *terrain, *water_frame_0, *water_frame_1, *skybox,
-               *rock1, *rock2, *tree, *tree_low, *sun;
+               *rock1, *rock2, *tree, *tree_low, *sun, *water_static;
 
 mesh_3d_static *rock1_instances[3];
 mesh_3d_static *rock2_instances[5];
@@ -24,12 +24,141 @@ texture_2d terrain_heightmap, terrain_texturemap, water_texture,
            grass_texture, sand_texture, sky_texture, rock_texture,
            tree_texture;
 
+float rendering_started_at;
+
+keyframe_interpolator     // camera interpolators:
+  i_x,                    // position x
+  i_y,                    // position y
+  i_z,                    // position z
+  i_r_x,                  // rotation around x
+  i_r_y;                  // rotation around y
+
 mesh_3d_lod *trees[NUMBER_OF_TREES];
+
+
+void setup_camera_keyframes()
+  {                  // time   // value
+    i_x.add_keyframe(  0,           114,     INTERPOLATION_SINE);
+    i_y.add_keyframe(  0,           6,       INTERPOLATION_SINE);
+    i_z.add_keyframe(  0,           61,      INTERPOLATION_SINE);
+    i_r_x.add_keyframe(0,           0,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(0,           230,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  7000,        36,      INTERPOLATION_SINE);
+    i_y.add_keyframe(  6000,        5.5,     INTERPOLATION_SINE);
+    i_z.add_keyframe(  7500,        1,       INTERPOLATION_SINE);
+    i_r_x.add_keyframe(7200,        0,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(6000,        240,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  12500,       36,      INTERPOLATION_CONSTANT);
+    i_y.add_keyframe(  12100,       10,      INTERPOLATION_CONSTANT);
+    i_z.add_keyframe(  12000,       1,       INTERPOLATION_CONSTANT);
+    i_r_x.add_keyframe(12200,       2,       INTERPOLATION_CONSTANT);
+    i_r_y.add_keyframe(12000,       270,     INTERPOLATION_CONSTANT);
+
+    i_x.add_keyframe(  13000,       9,       INTERPOLATION_SINE);
+    i_y.add_keyframe(  13000,       16,      INTERPOLATION_SINE);
+    i_z.add_keyframe(  13000,       -23,     INTERPOLATION_SINE);
+    i_r_x.add_keyframe(13000,       35,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(13000,       341,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  15500,       -18,     INTERPOLATION_SINE);
+    i_y.add_keyframe(  15100,       9,       INTERPOLATION_SINE);
+    i_z.add_keyframe(  14600,       -20,     INTERPOLATION_SINE);
+    i_r_x.add_keyframe(14700,       11,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(15200,       375,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  17700,       -25,     INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  18500,       3,       INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  18100,       -1,      INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(18005,       -10,     INTERPOLATION_SINE);
+    i_r_y.add_keyframe(17800,       440,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  20500,       -23,     INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  20100,       5,       INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  19700,       14,      INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(20100,       2,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(20200,       460,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  22100,       -18,     INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  21500,       11,      INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  22100,       38,      INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(22000,       11,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(22000,       500,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  25500,       18,      INTERPOLATION_CONSTANT);
+    i_y.add_keyframe(  24900,       17,      INTERPOLATION_CONSTANT);
+    i_z.add_keyframe(  25100,       37,      INTERPOLATION_CONSTANT);
+    i_r_x.add_keyframe(25000,       29,      INTERPOLATION_CONSTANT);
+    i_r_y.add_keyframe(25100,       550,     INTERPOLATION_CONSTANT);
+
+    i_x.add_keyframe(  26000,       14,      INTERPOLATION_SINE);
+    i_y.add_keyframe(  26000,       5,       INTERPOLATION_SINE);
+    i_z.add_keyframe(  26000,       11,      INTERPOLATION_SINE);
+    i_r_x.add_keyframe(26000,       7,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(26000,       321,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  33000,       14,      INTERPOLATION_CONSTANT);
+    i_y.add_keyframe(  33000,       5,       INTERPOLATION_CONSTANT);
+    i_z.add_keyframe(  33000,       11,      INTERPOLATION_CONSTANT);
+    i_r_x.add_keyframe(33000,       7,       INTERPOLATION_CONSTANT);
+    i_r_y.add_keyframe(33000,       270,     INTERPOLATION_CONSTANT);
+
+    i_x.add_keyframe(  34000,       10,      INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  34000,       7,       INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  34000,       12,      INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(34000,       15,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(34000,       196,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  38000,       8,       INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  38000,       9,       INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  38000,       2.4,     INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(38000,       -5,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(38000,       259,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  42000,       0,       INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  42000,       11,      INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  42000,       4.1,     INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(42000,       0,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(42000,       280,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  46000,       -11,     INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  46000,       15,      INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  46000,       8,       INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(46000,       46,      INTERPOLATION_SINE);
+    i_r_y.add_keyframe(46000,       168,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  50000,       -15,     INTERPOLATION_CONSTANT);
+    i_y.add_keyframe(  50000,       27,      INTERPOLATION_CONSTANT);
+    i_z.add_keyframe(  50000,       5,       INTERPOLATION_CONSTANT);
+    i_r_x.add_keyframe(50000,       82,      INTERPOLATION_CONSTANT);
+    i_r_y.add_keyframe(50000,       108,     INTERPOLATION_CONSTANT);
+
+    i_x.add_keyframe(  52000,       -6,      INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  52000,       4.1,     INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  52000,       35.48,   INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(52000,       0,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(52000,       218,     INTERPOLATION_SINE);
+
+    i_x.add_keyframe(  62000,       -130,    INTERPOLATION_LINEAR);
+    i_y.add_keyframe(  62000,       8,       INTERPOLATION_LINEAR);
+    i_z.add_keyframe(  62000,       -127,    INTERPOLATION_LINEAR);
+    i_r_x.add_keyframe(62000,       0,       INTERPOLATION_SINE);
+    i_r_y.add_keyframe(62000,       218,     INTERPOLATION_SINE);
+  }
 
 static void render_scene()
 
   {
-    camera.handle_fps();
+    float parameter;
+    parameter = get_time() - rendering_started_at;
+
+    if (parameter >= 62000)  // end of intro
+      stop_rendering();
+
+    // get the camera position and rotation from interpolators:
+    camera.set_position(i_x.get_value(parameter),i_y.get_value(parameter),i_z.get_value(parameter));
+    camera.set_rotation(i_r_x.get_value(parameter),i_r_y.get_value(parameter),0);
 
     unsigned int i;
 
@@ -52,20 +181,24 @@ static void render_scene()
 
     terrain->draw();
     water->draw();
+    water_static->draw();
     skybox->draw();
 
     point_3d p;
+    point_3d r;
     camera.get_position(&p);
-    cout << p.x << " " << p.y << " " << p.z << endl;
+    camera.get_rotation(&r);
+  }
+
+void destroy_scene()
+  {
   }
 
 static void keyboard_function2(bool key_up, int key, int x, int y)
-
   {
   }
 
 static void keyboard_function(int key, int x, int y)
-
   {
     if (key == 'p')
       exit(0);
@@ -91,22 +224,21 @@ void init_scene()
     tree_texture.set_transparent_color(255,0,0);
 
     // make the sun:
-    sun = make_sphere(10,10,10);
+    sun = make_sphere(50,10,10);
     sun->set_render_mode(RENDER_MODE_NO_LIGHT);
     sun->set_color(250,250,220);
-    sun->set_position(-120,100,-120);
+    sun->set_position(-400,100,-400);
 
     // make the terrain:
     terrain = make_terrain(50,50,TERRAIN_HEIGHT,100,100,&terrain_heightmap);
     terrain->texture_map_plane(DIRECTION_DOWN,TERRAIN_TILE_FACTOR,TERRAIN_TILE_FACTOR);
     terrain->texture_map_layer_mask(&terrain_texturemap);
-    terrain->set_render_mode(RENDER_MODE_SHADED_PHONG);
     terrain->set_lighting_properties(0.3,0.7,0.3,1.5);
     terrain->set_texture(&grass_texture);
     terrain->set_texture2(&sand_texture);
 
     // make the water animation of two frames:
-    water_frame_0 = make_terrain(500,500,1,20,20,NULL);
+    water_frame_0 = make_terrain(300,300,1,18,18,NULL);
     water_frame_0->texture_map_plane(DIRECTION_DOWN,20,20);
 
     water_frame_1 = new mesh_3d_static(water_frame_0);
@@ -114,20 +246,11 @@ void init_scene()
 
     for (i = 0; i < water_frame_0->vertex_count(); i++)    // deform the surface randomly so the water will move a little
       {
-        water_frame_0->vertices[i].position.y += (rand() % 100) * 0.02;
-        water_frame_1->vertices[i].position.y += (rand() % 100) * 0.02;
-        water_frame_1->vertices[i].texture_coordination[0] += (rand() % 10 - 5) * 0.01;
-        water_frame_1->vertices[i].texture_coordination[1] += (rand() % 10 - 5) * 0.01;
+        water_frame_0->vertices[i].position.y += (rand() % 100) * 0.03;
+        water_frame_1->vertices[i].position.y += (rand() % 100) * 0.03;
+        water_frame_1->vertices[i].texture_coordination[0] += (rand() % 10 - 5) * 0.02;
+        water_frame_1->vertices[i].texture_coordination[1] += (rand() % 10 - 5) * 0.02;
       }
-
-    // make the skybox:
-    skybox = make_sphere(200,15,15);
-    skybox->texture_map_plane(DIRECTION_FORWARD,3,3);
-    skybox->flip_triangles();    // flip the sphere inside out as the camera will be inside
-    skybox->set_render_mode(RENDER_MODE_NO_LIGHT);  // no shading for the sky
-    skybox->set_texture(&sky_texture);
-
-    camera.set_skybox(skybox);   // the skybox will follow camera movement now
 
     water_frame_0->update();
     water_frame_1->update();
@@ -138,11 +261,27 @@ void init_scene()
     water->set_texture(&water_texture);
     water->add_frame(water_frame_1,2000);
     water->set_position(0,1,0);
-    water->set_render_mode(RENDER_MODE_SHADED_PHONG);
-    water->set_lighting_properties(0.4,0.2,0.9,5);
+    water->set_render_mode(RENDER_MODE_SHADED_GORAUD);
+    water->set_lighting_properties(0.6,0.2,0.9,5);
     water->update();             // upload the animation data to GPU
 
     water->set_playing(true);    // play the animation
+
+    water_static = make_plane(1000,1000,10,10);
+    water_static->set_rotation(-90,0,0);
+    water_static->set_position(0,-0.2,0);
+    water_static->texture_map_plane(DIRECTION_FORWARD,50,50);
+    water_static->set_texture(&water_texture);
+    water_static->set_lighting_properties(0.6,0.2,0.9,5);
+
+    // make the skybox:
+    skybox = make_sphere(800,15,15);
+    skybox->texture_map_plane(DIRECTION_FORWARD,3,3);
+    skybox->flip_triangles();    // flip the sphere inside out as the camera will be inside
+    skybox->set_render_mode(RENDER_MODE_NO_LIGHT);  // no shading for the sky
+    skybox->set_texture(&sky_texture);
+
+    camera.set_skybox(skybox);   // the skybox will follow camera movement now
 
     // make rocks:
     rock1 = new mesh_3d_static();
@@ -226,7 +365,7 @@ void init_scene()
         terrain->add_shadow((1 - position_x) * TERRAIN_TILE_FACTOR,(1 - position_y) * TERRAIN_TILE_FACTOR,0.25,-0.1);
 
         terrain_heightmap.get_pixel(position_x * terrain_heightmap.get_width(),position_y * terrain_heightmap.get_height(),&r,&g,&b);
-        height = r / 255.0 * TERRAIN_HEIGHT - 0.5;
+        height = r / 255.0 * TERRAIN_HEIGHT - 0.7;
 
         position_x *= island_width;             // transform from normalised to world coords
         position_y *= island_height;
@@ -252,19 +391,24 @@ int main(int argc, char **argv)
 
   init_opengl(&argc,argv,800,600,render_scene,"OpenglSE intro");
 
-  init_scene();
+  go_fullscreen();
 
-  set_perspective(110,0.01,500);
+  init_scene();
+  setup_camera_keyframes();
+
+  set_mouse_visibility(false);
+
+  set_perspective(110,0.01,1000);
 
   register_keyboard_function(keyboard_function);
   register_advanced_keyboard_function(keyboard_function2);
-
-
 
   camera.set_position(0,17,0);
 
   camera.rotation_speed = 0.025;
 
+  rendering_started_at = get_time();
   render_loop();
+  destroy_scene();
   return 0;
 }
