@@ -1202,23 +1202,24 @@ typedef struct                        /// for LOD
     mesh_3d_static *mesh;
   } detail_level;
 
-class mesh_lod: public mesh_3d        /// set of multiple static meshes that are being switched between depending on their distance, the LOD is being recomputed every RECOMPUTE_FRAMES frames
+class mesh_3d_lod: public mesh_3d        /// set of multiple static meshes that are being switched between depending on their distance, the LOD is being recomputed every RECOMPUTE_FRAMES frames
   {
     protected:
       bool keep_everything_on_gpu;
-      bool use_this_mesh_properties;  /// if true, then all the meshes will only provide geometry, other things (textures etc.) will be provided by this mesh_lod
+      bool use_this_mesh_properties;  /// if true, then all the meshes will only provide geometry, other things (textures etc.) will be provided by this mesh_3d_lod
       int active_level;               // -1 if lod_meshes vector is empty
 
     public:
       vector<detail_level> lod_meshes;
-      mesh_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu);
+
+      mesh_3d_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu);
         /**<
          Class constructor, initialises new object.
 
          @param use_this_mesh_properties if true, then all the detail
                 meshes will only provide geometry, other things (such as
                 textures, lighting etc.) will be provided by this
-                mesh_lod so that all the mesh details will share them,
+                mesh_3d_lod so that all the mesh details will share them,
                 if false, then all meshes can specify their own
                 properties
          @param keep_everything_on_gpu if true, then all the detail
@@ -1234,7 +1235,7 @@ class mesh_lod: public mesh_3d        /// set of multiple static meshes that are
 
          @return current detail level where 0 is the best quality mesh,
                  -1 means there is active level because either there are
-                 no meshes set or the mesh_lod object is too far away
+                 no meshes set or the mesh_3d_lod object is too far away
                  beyond all meshes set distances
          */
 
@@ -1266,6 +1267,45 @@ class mesh_lod: public mesh_3d        /// set of multiple static meshes that are
          */
 
       virtual void clear();
+  };
+
+//------------------------------------
+
+typedef struct
+  {
+    float x;                            /// indipendent variable value
+    float y;                            /// dependant variable value
+    interpolation_method interpolation; /// method of interpolation from this point to the next one
+  } keyframe;
+
+class keyframe_interpolator           /// represents a general function of one argument composed of points that are interpolated between (good for animation etc.)
+  {
+    protected:
+      void sort();
+        /**<
+         Sorts the keyframes by x value (lowest first).
+         */
+
+    public:
+      vector<keyframe> keyframes;
+
+      void add_keyframe(float x, float y, interpolation_method interpolation);
+        /**<
+         Adds a new keyframe. It will be automatically put in the right
+         place so that the keyframes are sorted.
+
+         @param x indipendent variable value
+         @param y dependant variable value
+         @param interpolation method of interpolation from this point to the next one
+         */
+
+      float get_value(float x);
+        /**<
+         Gets the function value in given point.
+
+         @param x value in which the function should be computed (interpolated)
+         @return function value
+         */
   };
 
 //------------------------------------
@@ -1572,7 +1612,7 @@ void (*user_advanced_keyboard_function)(bool key_up, int key, int x, int y) = NU
 void (*user_mouse_function)(int button, int state) = NULL;
 float global_fov, global_near, global_far;                         /// perspective parameters
 float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
-bool global_recompute_lod = false;                                 /// flag that tells the mesh_lod objects to recompute their LODs
+bool global_recompute_lod = false;                                 /// flag that tells the mesh_3d_lod objects to recompute their LODs
 int global_mouse_position[2];
 
 int global_frame_counter = 0;                                      /// for FPS
@@ -4901,6 +4941,59 @@ void mesh_3d_animated::set_playing(bool play)
 
 //----------------------------------------------------------------------
 
+void keyframe_interpolator::sort()
+
+{
+  unsigned int i,j;
+  keyframe helper_keyframe;
+
+  for (j = 0; j < this->keyframes.size(); j++)   // bubble sort
+    for (i = j; i < this->keyframes.size() - 1; i++)
+      if (this->keyframes[i].x > this->keyframes[i + 1].x)
+        {
+          helper_keyframe = this->keyframes[i];
+          this->keyframes[i] = this->keyframes[i + 1];
+          this->keyframes[i + 1] = helper_keyframe;
+        }
+}
+
+//----------------------------------------------------------------------
+
+void keyframe_interpolator::add_keyframe(float x, float y, interpolation_method interpolation)
+
+{
+  keyframe helper_keyframe;
+
+  helper_keyframe.x = x;
+  helper_keyframe.y = y;
+  helper_keyframe.interpolation = interpolation;
+
+  this->keyframes.push_back(helper_keyframe);
+  this->sort();
+}
+
+//----------------------------------------------------------------------
+
+float keyframe_interpolator::get_value(float x)
+
+{
+  if (this->keyframes.size() <= 1)
+    return 0.0;
+
+  unsigned int i;
+
+  for (i = 0; i < this->keyframes.size(); i++)
+    if (this->keyframes[i].x > x)
+      break;
+
+  if (i == 0 || i >= this->keyframes.size())
+    return 0;
+
+  return interpolate((x - this->keyframes[i - 1].x) / (this->keyframes[i].x - this->keyframes[i - 1].x),this->keyframes[i - 1].y,this->keyframes[i].y,this->keyframes[i - 1].interpolation);
+}
+
+//----------------------------------------------------------------------
+
 void mesh_3d_animated::update()
 
 {
@@ -4958,7 +5051,7 @@ bool mesh_3d::get_visibility()
 
 //----------------------------------------------------------------------
 
-mesh_lod::mesh_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu)
+mesh_3d_lod::mesh_3d_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu)
 
 {
   this->active_level = -1;
@@ -4968,7 +5061,7 @@ mesh_lod::mesh_lod(bool use_this_mesh_properties, bool keep_everything_on_gpu)
 
 //----------------------------------------------------------------------
 
-int mesh_lod::get_current_detail_level()
+int mesh_3d_lod::get_current_detail_level()
 
 {
   return this->active_level;
@@ -4976,7 +5069,7 @@ int mesh_lod::get_current_detail_level()
 
 //----------------------------------------------------------------------
 
-void mesh_lod::add_detail_mesh(mesh_3d_static *mesh, float distance)
+void mesh_3d_lod::add_detail_mesh(mesh_3d_static *mesh, float distance)
 
 {
   detail_level detail;
@@ -4990,7 +5083,7 @@ void mesh_lod::add_detail_mesh(mesh_3d_static *mesh, float distance)
 
 //----------------------------------------------------------------------
 
-void mesh_lod::update()
+void mesh_3d_lod::update()
 
 {
   // sort the lod_meshes array by distance (index 0 ~ shortest distance):
@@ -5012,7 +5105,7 @@ void mesh_lod::update()
 
 //----------------------------------------------------------------------
 
-void mesh_lod::unload()
+void mesh_3d_lod::unload()
 
 {
 }
@@ -5030,7 +5123,7 @@ void set_mouse_visibility(bool visible)
 
 //----------------------------------------------------------------------
 
-void mesh_lod::clear()
+void mesh_3d_lod::clear()
 
 {
   this->active_level = -1;
@@ -5047,7 +5140,7 @@ void go_fullscreen()
 
 //----------------------------------------------------------------------
 
-void mesh_lod::draw()
+void mesh_3d_lod::draw()
 
 {
   if (this->lod_meshes.size() == 0)
