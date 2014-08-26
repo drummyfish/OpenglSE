@@ -1155,47 +1155,6 @@ class picture_2d: public gpu_drawable /// 2D picture that can be drawn (for exam
 
 //------------------------------------
 
-class text_2d: public gpu_drawable    /// allows to display ASCII text
-  {
-    protected:
-      picture_2d text_picture;
-      texture_2d *font;
-      string text;
-
-    public:
-      text_2d();
-
-      void set_text(string text);
-        /**<
-         Sets the text to be displayed by the object.
-
-         @param text ASCII text to be displayed
-         */
-
-      void set_font(texture_2d *font);
-        /**<
-         Sets the text font.
-
-         @param font texture representing fixed-size font, it must be
-                composed of 256 text characters, one next to another
-                from left to right in ASCII order, the image size
-                doesn't matter, it will be divided to 256 characters
-         */
-
-      texture_2d* get_font();
-        /**<
-         Gets the font set for the text.
-
-         @return font texture (see set_font for details)
-         */
-
-      virtual void draw();
-      virtual void update();
-      virtual void unload();
-  };
-
-//------------------------------------
-
 typedef struct                        /// for LOD
   {
     float distance_to;                /// to which distance this mesh should be used
@@ -1513,7 +1472,7 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
    @return generated terrain mesh
    */
 
-picture_2d *make_text(string text, texture_2d *font, float size = 0.05, float spacing = 0.03);
+picture_2d *make_text(string text, texture_2d *font = NULL, float size = 0.05, float spacing = 0.03);
   /**<
    Makes a picture of given ASCII text.
 

@@ -63,3 +63,6 @@ instalation:
 - compile and link with GCC:
   - on Windows add these flags: -lfreeglut -lglew32s -lopengl32
   - on Linux add these flags: -lfreeglut -lglew32s -lopengl32
+
+on Windows the executables need freeglut.dll to run, otherwise an error
+occurs!
