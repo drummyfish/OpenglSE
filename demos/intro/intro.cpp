@@ -1,13 +1,12 @@
 /*
- Work in progress
+ A short intro made with OpenGLSE.
+
+ Miloslav Číž, 2014
  */
 
 #include "../../openglse.hpp"
 
 using namespace gl_se;
-
-/* this function will be called in the main loop to render the scene
-   repeatedly: */
 
 #define NUMBER_OF_TREES 40
 #define TERRAIN_HEIGHT 10
@@ -24,17 +23,16 @@ texture_2d terrain_heightmap, terrain_texturemap, water_texture,
            grass_texture, sand_texture, sky_texture, rock_texture,
            tree_texture;
 
-float rendering_started_at;
+float rendering_started_at;   // time at which the initialisation has been done and rendering strted
 
-keyframe_interpolator     // camera interpolators:
+keyframe_interpolator     // camera interpolators for its movement and rotation:
   i_x,                    // position x
   i_y,                    // position y
   i_z,                    // position z
   i_r_x,                  // rotation around x
   i_r_y;                  // rotation around y
 
-mesh_3d_lod *trees[NUMBER_OF_TREES];
-
+mesh_3d_lod *trees[NUMBER_OF_TREES];  // array of trees, each consisting of 2 models (low and normal polygon count)
 
 void setup_camera_keyframes()
   {                  // time   // value
@@ -134,9 +132,9 @@ void setup_camera_keyframes()
     i_r_x.add_keyframe(50000,       82,      INTERPOLATION_CONSTANT);
     i_r_y.add_keyframe(50000,       108,     INTERPOLATION_CONSTANT);
 
-    i_x.add_keyframe(  52000,       -6,      INTERPOLATION_LINEAR);
-    i_y.add_keyframe(  52000,       4.1,     INTERPOLATION_LINEAR);
-    i_z.add_keyframe(  52000,       35.48,   INTERPOLATION_LINEAR);
+    i_x.add_keyframe(  52000,       -6,      INTERPOLATION_SINE);
+    i_y.add_keyframe(  52000,       4.1,     INTERPOLATION_SINE);
+    i_z.add_keyframe(  52000,       35.48,   INTERPOLATION_SINE);
     i_r_x.add_keyframe(52000,       0,       INTERPOLATION_SINE);
     i_r_y.add_keyframe(52000,       218,     INTERPOLATION_SINE);
 
@@ -148,7 +146,6 @@ void setup_camera_keyframes()
   }
 
 static void render_scene()
-
   {
     float parameter;
     parameter = get_time() - rendering_started_at;
@@ -183,29 +180,38 @@ static void render_scene()
     water->draw();
     water_static->draw();
     skybox->draw();
-
-    point_3d p;
-    point_3d r;
-    camera.get_position(&p);
-    camera.get_rotation(&r);
   }
 
 void destroy_scene()
   {
-  }
-
-static void keyboard_function2(bool key_up, int key, int x, int y)
-  {
+    delete terrain;
+    delete water_frame_0;
+    delete water_frame_1;
+    delete skybox;
+    delete rock1;
+    delete rock2;
+    delete tree;
+    delete tree_low;
+    delete sun;
+    delete water_static;
+    delete rock1_instances[0];
+    delete rock1_instances[1];
+    delete rock1_instances[2];
+    delete rock2_instances[0];
+    delete rock2_instances[1];
+    delete rock2_instances[2];
+    delete rock2_instances[3];
+    delete rock2_instances[4];
+    delete water;
   }
 
 static void keyboard_function(int key, int x, int y)
   {
-    if (key == 'p')
-      exit(0);
+    if (key == 'q')
+      stop_rendering();
   }
 
 void init_scene()
-
   {
     unsigned int i;
 
@@ -387,26 +393,13 @@ void init_scene()
 int main(int argc, char **argv)
 
 {
-  unsigned int i;
-
   init_opengl(&argc,argv,800,600,render_scene,"OpenglSE intro");
-
   go_fullscreen();
-
   init_scene();
   setup_camera_keyframes();
-
   set_mouse_visibility(false);
-
   set_perspective(110,0.01,1000);
-
   register_keyboard_function(keyboard_function);
-  register_advanced_keyboard_function(keyboard_function2);
-
-  camera.set_position(0,17,0);
-
-  camera.rotation_speed = 0.025;
-
   rendering_started_at = get_time();
   render_loop();
   destroy_scene();
