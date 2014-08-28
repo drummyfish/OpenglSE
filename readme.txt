@@ -34,15 +34,15 @@ implemented features:
 - very simple shadows (blobs underneath objects)
 - interpolation functions (for camera movement etc.)
 - 2D image rendering
+- example program included
+- ASCII text rendering
 
 to-do:
-- ASCII text rendering
 - billboarding (2D sprites)
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
 - simple physics
 - terrain seamless LOD
-- documentation and example program included
 
 classes (to-do):
 

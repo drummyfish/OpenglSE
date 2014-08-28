@@ -227,3 +227,6 @@ moje.cpp
 
 !demos/intro/*.ppm
 !demos/intro/*.obj
+
+!demos/sandbox/*.ppm
+!demos/sandbox/*.obj
