@@ -1573,6 +1573,7 @@ float global_fov, global_near, global_far;                         /// perspecti
 float global_fog_distance;                                         /// at what distance from the far plane in view space the fog begins
 bool global_recompute_lod = false;                                 /// flag that tells the mesh_3d_lod objects to recompute their LODs
 int global_mouse_position[2];
+bool global_ignore_mouse_position = true;                          /// this is used by camera.handle_fps() to prevent mouse rotation in first call
 
 int global_frame_counter = 0;                                      /// for FPS
 int global_last_time = 0;                                          /// for FPS
@@ -4156,6 +4157,13 @@ void camera_struct::handle_fps()
     {
       int mouse_dx = global_window_center[0] - global_mouse_position[0];
       int mouse_dy = global_window_center[1] - global_mouse_position[1];
+
+      if (global_ignore_mouse_position)  // in first call the mouse position is ignored
+        {
+          mouse_dx = 0;
+          mouse_dy = 0;
+          global_ignore_mouse_position = false;
+        }
 
       set_mouse_position(global_window_center[0],global_window_center[1]);
 
