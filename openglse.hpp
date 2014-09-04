@@ -938,7 +938,7 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
 
       void get_bounding_box(float *x0, float *y0, float *z0, float *x1, float *y1, float *z1);
         /**<
-         Returns the model bounding box (in model space).
+         Gets the model bounding box (in model space).
 
          @param x0 x coordination of the first point
          @param y0 y coordination of the first point
@@ -946,6 +946,28 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          @param x1 x coordination of the second point
          @param y1 y coordination of the second point
          @param z1 z coordination of the second point
+         */
+
+      void get_bounding_box(point_3d *first_point, point_3d *second_point);
+        /**<
+         Gets the model bounding box (in model space).
+
+         @param first_point in this variable the first point defining
+                the bounding box will be returned
+         @param second_point in this variable the second point defining
+                the bounding box will be returned
+         */
+
+      void get_size(float *width, float *height, float *depth);
+        /**<
+         Gets the size of the model's bounding box (in model space).
+
+         @param width in this variable the model width (x size) will be
+                returned
+         @param height in this variable the model height (y) will be
+                returned
+         @param depth in this variable the model depth (z) will be
+                returned
          */
 
       void get_vbo_ibo_vao(GLuint *vbo, GLuint *ibo, GLuint *vao);
@@ -4422,6 +4444,29 @@ void mesh_3d_static::get_bounding_box(float *x0, float *y0, float *z0, float *x1
       if (this->vertices[i].position.z > *z1)
         *z1 = this->vertices[i].position.z;
     }
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_static::get_bounding_box(point_3d *first_point, point_3d *second_point)
+
+{
+  this->get_bounding_box(&first_point->x,&first_point->y,&first_point->z,
+                         &second_point->x,&second_point->y,&second_point->z);
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_static::get_size(float *width, float *height, float *depth)
+
+{
+  point_3d point_a,point_b;
+
+  this->get_bounding_box(&point_a,&point_b);
+
+  *width = point_b.x - point_a.x;
+  *height = point_b.y - point_a.y;
+  *depth = point_b.z - point_a.z;
 }
 
 //----------------------------------------------------------------------
