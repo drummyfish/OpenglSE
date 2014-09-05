@@ -81,10 +81,7 @@ int main(int argc, char **argv)
       original_model->get_size(&width,&height,&depth);
 
       // scale the model to size cca 5:
-      maximum_size = width > height ? (width > depth ? width : depth) : (height > depth ? height : depth);
-      scale = 5 / maximum_size;
-      make_scale_matrix(scale,scale,scale,scale_matrix);
-      original_model->apply_matrix(scale_matrix);
+      original_model->scale_to_size(5,true);
     }
   else   // default model - a sphere
     {

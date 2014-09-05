@@ -230,3 +230,5 @@ moje.cpp
 
 !demos/sandbox/*.ppm
 !demos/sandbox/*.obj
+
+*.tga

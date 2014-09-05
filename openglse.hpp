@@ -13,6 +13,7 @@
 #define RECOMPUTE_FRAMES 128            // after how many frames things like FPS or LOD are recomputed
 #define MAX_ANIMATION_FRAMES 32
 #define MAX_SHADOWS 64                  // maximum number of shadows on the mesh surface
+#define OPENGLSE_VERSION 1
 
 #include <stdio.h>
 #include <string>
@@ -1037,6 +1038,21 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
 
          @param matrix transformation matrix to be applies
         */
+
+      void scale_to_size(float size, bool apply_matrix = false);
+        /**<
+         Scales the model so that it's largest size (i.e. width,
+         height or depth) is given amount while keeping it's
+         proportions. The size is calculated from the model's bounding
+         box.
+
+         @param size to what size the model should be scaled
+         @param apply_matrix if true, the model will be scaled by
+                applying scale matrix which means it will be scaled in
+                model space, otherwise the model will be scaled by
+                setting it's scale property (it will be scaled in world
+                space)
+         */
   };
 
 //------------------------------------
@@ -3876,6 +3892,28 @@ void mesh_3d::set_scale(float x, float y, float z)
   make_scale_matrix(x,y,z,this->scale_matrix);
 
   this->update_transformation_matrix();
+}
+
+//----------------------------------------------------------------------
+
+void mesh_3d_static::scale_to_size(float size,bool apply_matrix)
+
+{
+  float width,height,depth,scale,maximum_size;
+  float scale_matrix[4][4];
+
+  this->get_size(&width,&height,&depth);
+
+  maximum_size = width > height ? (width > depth ? width : depth) : (height > depth ? height : depth);
+  scale = size / maximum_size;
+
+  if (apply_matrix)
+    {
+      make_scale_matrix(scale,scale,scale,scale_matrix);
+      this->apply_matrix(scale_matrix);
+    }
+  else
+    this->set_scale(scale);
 }
 
 //----------------------------------------------------------------------
