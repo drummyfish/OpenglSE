@@ -1529,6 +1529,13 @@ void go_fullscreen();
    Makes the window fullscreen.
    */
 
+string get_gpu_info_string();
+  /**<
+   Gets the string with GPU info.
+
+   @return string in format "vendor version"
+   */
+
 float get_fps();
   /**<
    Returns current FPS. FPS is being recomputed after every RECOMPUTE_FRAMES
@@ -1621,6 +1628,7 @@ float global_spf = 0;
 unsigned char global_background_color[3];                          /// background color of the viewport
 bool global_keyboard_state[512];                                   /// keeps the keyboard state (each ASCII character + special keys) for the advanced keyboard function
 int global_previous_frame_time = 0;                                /// keep the time of the previous frame
+int global_frame_time_difference = 0;
 
 point_3d global_light_direction;                                   /// global directional light direction vector
 unsigned char global_light_color[3];                               /// global directional light RGB intensity
@@ -2044,12 +2052,13 @@ void loop_function()
 
 {
   unsigned int helper_time = glutGet(GLUT_ELAPSED_TIME);
+  global_frame_time_difference = helper_time - global_previous_frame_time;
+  global_previous_frame_time = helper_time;
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
   user_render_function();
 
-  global_previous_frame_time = helper_time;
   global_recompute_lod = false;
 
   if (global_frame_counter <= 0)      // recompute FPS
@@ -4512,7 +4521,7 @@ void mesh_3d_static::get_size(float *width, float *height, float *depth)
 int get_frame_time_difference()
 
 {
-  return glutGet(GLUT_ELAPSED_TIME) - global_previous_frame_time;
+  return global_frame_time_difference;
 }
 
 //----------------------------------------------------------------------
@@ -5005,6 +5014,20 @@ void keyframe_interpolator::sort()
           this->keyframes[i] = this->keyframes[i + 1];
           this->keyframes[i + 1] = helper_keyframe;
         }
+}
+
+//----------------------------------------------------------------------
+
+string get_gpu_info_string()
+
+{
+  string result;
+
+  result = ((const char *) glGetString(GL_VENDOR));
+  result += " ";
+  result += ((const char *) glGetString(GL_VERSION));
+
+  return result;
 }
 
 //----------------------------------------------------------------------

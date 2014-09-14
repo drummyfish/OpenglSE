@@ -41,7 +41,7 @@ int main(int argc, char **argv)
   unsigned int i,j;
   mesh_3d_static *original_model;
   float scale_matrix[4][4];
-  float scale,maximum_size;
+  float scale;
 
   init_opengl(&argc,argv,800,600,render_scene,"fur rendering");   // this must be done before anything else
   set_mouse_visibility(false);                                    // hides the mouse cursor

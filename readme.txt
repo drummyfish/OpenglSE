@@ -39,12 +39,13 @@ implemented features:
 
 to-do:
 - billboarding (2D sprites)
+- deferred shading
 - generating volumetric meshes from 3D arrays of data
 - simple collision detection
 - simple physics
 - terrain seamless LOD
 
-classes (to-do):
+classes:
 
 gpu_object                something that can be put on GPU
   gpu_drawable            something that can be directly drawn
