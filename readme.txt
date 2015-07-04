@@ -1,3 +1,6 @@
+![Alt text](http://i.imgur.com/onOsRYP.png "screenshot 1")
+![Alt text](http://i.imgur.com/rG2KCPQ.png "screenshot 2")
+
 implemented features:
 
 - multiplatform C++ 3D engine based on OpenGL

@@ -254,8 +254,8 @@ void init_scene()
       {
         water_frame_0->vertices[i].position.y += (rand() % 100) * 0.03;
         water_frame_1->vertices[i].position.y += (rand() % 100) * 0.03;
-        water_frame_1->vertices[i].texture_coordination[0] += (rand() % 10 - 5) * 0.02;
-        water_frame_1->vertices[i].texture_coordination[1] += (rand() % 10 - 5) * 0.02;
+        water_frame_1->vertices[i].texture_coordinate[0] += (rand() % 10 - 5) * 0.02;
+        water_frame_1->vertices[i].texture_coordinate[1] += (rand() % 10 - 5) * 0.02;
       }
 
     water_frame_0->update();
