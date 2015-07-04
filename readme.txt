@@ -63,7 +63,7 @@ instalation:
 - include openglse.hpp in your sourcecode and use namespace gl_se
 - compile and link with GCC:
   - on Windows add these flags: -lfreeglut -lglew32s -lopengl32
-  - on Linux add these flags: -lfreeglut -lglew32s -lopengl32
+  - on Linux add these flags: -lGL -lglut -lGLU -lGLEW
 
 on Windows the executables need freeglut.dll to run, otherwise an error
 occurs!

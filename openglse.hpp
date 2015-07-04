@@ -135,11 +135,11 @@ unsigned char default_font_data[] =       {   // default font pixel data
 char shader_vertex[] =
 "#version 330                                                 \n"
 "layout (location = 0) in vec3 position;                      \n"
-"layout (location = 1) in vec2 texture_coordination;          \n"
+"layout (location = 1) in vec2 texture_coordinate;          \n"
 "layout (location = 2) in vec3 normal;                        \n"
 "layout (location = 3) in float texture_blend_ratio;          \n"
 "layout (location = 4) in vec3 position2;                     \n"
-"layout (location = 5) in vec2 texture_coordination2;         \n"
+"layout (location = 5) in vec2 texture_coordinate2;         \n"
 "layout (location = 6) in vec3 normal2;                       \n"
 "layout (location = 7) in float texture_blend_ratio2;         \n"
 "                                                             \n"
@@ -159,7 +159,7 @@ char shader_vertex[] =
 "uniform float far_plane;          // far plane distance      \n"
 "uniform bool draw_2d;             // of true, the view and perspective transforms won't be performed \n"
 "                                                             \n"
-"out vec2 uv_coordination;                                    \n"
+"out vec2 uv_coordinate;                                    \n"
 "out float texture_ratio;                                     \n"
 "out float final_intensity;      // computed from lighting    \n"
 "out vec3 transformed_normal;    // normal after object transformation \n"
@@ -177,11 +177,11 @@ char shader_vertex[] =
 "  if (frame_percentage >= 0) {                               \n"
 "    transformed_position = mix(position,position2,frame_percentage);    \n"
 "    transformed_normal = mix(normal,normal2,frame_percentage);          \n"
-"    uv_coordination = mix(texture_coordination,texture_coordination2,frame_percentage);  \n"
+"    uv_coordinate = mix(texture_coordinate,texture_coordinate2,frame_percentage);  \n"
 "    texture_ratio = mix(texture_blend_ratio,texture_blend_ratio2,frame_percentage); }    \n"
 "  else {"
 "    transformed_position = position;                         \n"
-"    uv_coordination = texture_coordination;                  \n"
+"    uv_coordinate = texture_coordinate;                  \n"
 "    transformed_normal = normal; }                           \n"
 "                                                             \n"
 "  transformed_position = (world_matrix * vec4(transformed_position,1.0)).xyz;                         \n"
@@ -218,7 +218,7 @@ char shader_vertex[] =
 
 char shader_fragment[] =
 "#version 330                                                 \n"
-"in vec2 uv_coordination;                                     \n"
+"in vec2 uv_coordinate;                                     \n"
 "in float final_intensity;                                    \n"
 "in vec3 transformed_normal;                                  \n"
 "in vec3 transformed_position;                                \n"
@@ -265,9 +265,9 @@ char shader_fragment[] =
 "  if (textures == uint(0))                                   \n"
 "    FragColor = vec4(mesh_color,1.0);                        \n"
 "  else {                                                     \n"
-"    FragColor = texture2D(texture_unit,uv_coordination.xy);  \n"
+"    FragColor = texture2D(texture_unit,uv_coordinate.xy);  \n"
 "    if (textures == uint(2))                                 \n"
-"       FragColor = mix(texture2D(texture_unit2,uv_coordination.xy),FragColor,texture_ratio);  \n"
+"       FragColor = mix(texture2D(texture_unit2,uv_coordinate.xy),FragColor,texture_ratio);  \n"
 "    }                                                        \n"
 "                                                             \n"
 "  if (render_mode == uint(2)) { // Phong                                                                      \n"
@@ -288,7 +288,7 @@ char shader_fragment[] =
 "  if (draw_2d)                                               \n"
 "    gl_FragDepth = 0.0;                                      \n"
 "                                                             \n"
-"  if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordination \n"
+"  if (abs(transparent_color_difference[0]) < 0.1 && abs(transparent_color_difference[1]) < 0.1 && abs(transparent_color_difference[2]) < 0.1)  // set the z coordinate \n"
 "      gl_FragDepth = 1.1;     // transparent color           \n"
 "    }                                                        \n"
 "                                                             \n"
@@ -296,8 +296,8 @@ char shader_fragment[] =
 "                                                             \n"
 "  for (i = uint(0); i < number_of_shadows; i++) {            \n"
 "    shadow_index = i * uint(4);  // sizeof shadow struct     \n"
-"    dx = uv_coordination.x - shadows[shadow_index];          \n"
-"    dy = uv_coordination.y - shadows[shadow_index + uint(1)];\n"
+"    dx = uv_coordinate.x - shadows[shadow_index];          \n"
+"    dy = uv_coordinate.y - shadows[shadow_index + uint(1)];\n"
 "    shadow_center_distance = sqrt(dx * dx + dy * dy);        \n"
 "    shadow_color = sign(shadows[shadow_index + uint(3)]);    \n"
 "    shadow_intensity = clamp(-20.0 * shadow_center_distance + 20.0 * shadows[shadow_index + uint(2)],0.0,1.0); \n"
@@ -351,7 +351,7 @@ typedef struct                      /// point in 3D space
 typedef struct                      /// vertex in 3D space
   {
     point_3d position;
-    float texture_coordination[2];
+    float texture_coordinate[2];
     point_3d normal;
     float texture_blend_ratio;      /// for texture blending
   } vertex_3d;
@@ -374,7 +374,7 @@ typedef struct                      /// an animation frame
 
 typedef struct                      /// simple shadow properties
   {                                 // don't change this struct, it would probably mess things up
-    float position[2];              /// texture (uv) coordination of the shadow at the surface
+    float position[2];              /// texture (uv) coordinate of the shadow at the surface
     float radius;
     float brightness;               /// shadow brightness in range <-1,1>
   } shadow;
@@ -437,8 +437,8 @@ class texture_2d: public gpu_object    /// represents a texture, it's x and y si
         /**<
          Converts x,y coordinates to linear data offset.
 
-         @param x x coordinations
-         @param y Y coordinations
+         @param x x coordinates
+         @param y Y coordinates
          */
 
     public:
@@ -487,8 +487,8 @@ class texture_2d: public gpu_object    /// represents a texture, it's x and y si
          Sets the texture pixel color, to take effect, the update method must
          be called.
 
-         @param x x coordination of the pixel
-         @param y y coordination of the pixel
+         @param x x coordinate of the pixel
+         @param y y coordinate of the pixel
          @param red amount of red
          @param green amount of green
          @param blue amount of blue
@@ -498,8 +498,8 @@ class texture_2d: public gpu_object    /// represents a texture, it's x and y si
         /**<
          Gets the texture pixel color.
 
-         @param x x coordination of the pixel
-         @param y y coordination of the pixel
+         @param x x coordinate of the pixel
+         @param y y coordinate of the pixel
          @param red in this variable the amount of red will be returned
          @param green in this variable the amount of green will be returned
          @param blue in this variable the amount of blue will be returned
@@ -662,8 +662,8 @@ class mesh_3d: public gpu_drawable    /// an abstract class of 3D mesh made of t
          Adds a new simple shadow blob that will be displayed on the
          surface of the mesh.
 
-         @param x texture u coordination of the shadow center
-         @param y texture v coordination of the shadow center
+         @param x texture u coordinate of the shadow center
+         @param y texture v coordinate of the shadow center
          @param radius shadow radius
          @param brightness brightness in range <-1,1>, -1 means
                 completely black, 1 means completely white
@@ -941,12 +941,12 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
         /**<
          Gets the model bounding box (in model space).
 
-         @param x0 x coordination of the first point
-         @param y0 y coordination of the first point
-         @param z0 z coordination of the first point
-         @param x1 x coordination of the second point
-         @param y1 y coordination of the second point
-         @param z1 z coordination of the second point
+         @param x0 x coordinate of the first point
+         @param y0 y coordinate of the first point
+         @param z0 z coordinate of the first point
+         @param x1 x coordinate of the second point
+         @param y1 y coordinate of the second point
+         @param z1 z coordinate of the second point
          */
 
       void get_bounding_box(point_3d *first_point, point_3d *second_point);
@@ -983,7 +983,7 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
 
       void texture_map_plane(axis_direction direction, float plane_width, float plane_height);
         /**<
-         Maps the texture coordinations of the vertices using planar mapping.
+         Maps the texture coordinates of the vertices using planar mapping.
 
          @param direction direction of the plane normal
          @param plane_width width of the plane, 1.0 is the width of the mesh
@@ -1022,8 +1022,8 @@ class mesh_3d_static: public mesh_3d         /// static (non-animated) 3D mesh
          @param x x position of the vertice
          @param y y position of the vertice
          @param z z position of the vertice
-         @param texture_u texture u coordination
-         @param texture_v texture v coordination
+         @param texture_u texture u coordinate
+         @param texture_v texture v coordinate
          @param normal_x normal vector x, the normal will be automatically normalized
          @param normal_y normal vector y
          @param normal_z normal vector z
@@ -1376,7 +1376,7 @@ void register_keyboard_function(void (*function)(int key, int x, int y));
    one occurs.
 
    @param function function to be registered (key is either the ASCII key code
-          or a special_keys code, x and y are the mouse coordinations at the
+          or a special_keys code, x and y are the mouse coordinates at the
           time when the key press occured)
   */
 
@@ -1386,7 +1386,7 @@ void register_advanced_keyboard_function(void (*function)(bool key_up, int key, 
    occurs.
 
    @param function function to be registered (key is either the ASCII key code
-          or a special_keys code, x and y are the mouse coordinations at the
+          or a special_keys code, x and y are the mouse coordinates at the
           time when the key press occured, key_up indicates if the event was
           key press or key release)
    */
@@ -1394,7 +1394,7 @@ void register_advanced_keyboard_function(void (*function)(bool key_up, int key, 
 void register_mouse_function(void (*function)(int button, int state));
   /**<
    Registers given function to be called when mouse button press occurs.
-   To regularly check mouse coordinations get_mouse_position function
+   To regularly check mouse coordinates get_mouse_position function
    can be used in the main rendering loop.
 
    @param function function to be registered
@@ -1503,8 +1503,8 @@ mesh_3d_static *make_terrain(float size_x, float size_y, float height, unsigned 
    @param resolution_y y resolution of the terrain
    @param heightmap heightmap image where lighter means higher, only red component
           is taken into account, if NULL, the terrain will be flat
-   @param crop_x x coordination in the range <0,1> of the starting cropping point
-   @param crop_y y coordination in the range <0,1> of the starting cropping point
+   @param crop_x x coordinate in the range <0,1> of the starting cropping point
+   @param crop_y y coordinate in the range <0,1> of the starting cropping point
    @param crop_width width of the cropping rectangle (in the range <0,1>)
    @param crop_height height of the cropping rectangle (in the range <0,1>)
    @return generated terrain mesh
@@ -1593,8 +1593,8 @@ void get_mouse_position(int *x, int *y);
    Gets the current mouse position relative to upper left corner of the
    window.
 
-   @param x in this variable the x coordination in pixels will be returned
-   @param y in this variable the y coordination in pixels will be returned
+   @param x in this variable the x coordinate in pixels will be returned
+   @param y in this variable the y coordinate in pixels will be returned
    */
 
 void set_fog(float distance);
@@ -1959,21 +1959,16 @@ float angle_to_0_360(float angle)
    */
 
 {
-  if (angle > 360)
+  if (angle < 0)
     {
-      while (angle > 360)
-        angle -= 360;
-
-      return angle;
-    }
-  else if (angle < 0)
-    {
-      while (angle < 0)
-        angle += 360;
-
-      return angle;
+      angle = -1 * angle;
+      angle = fmod(angle,360.0);
+      angle = 360.0 - angle;
     }
 
+  if (angle != 0)
+    angle = fmod(angle,360.0);
+  
   return angle;
 }
 
@@ -2021,7 +2016,7 @@ void mouse_move_function(int x, int y)
 
   /**<
     This function is internally registered as a mouse move function and
-    updates the global mouse coordinations.
+    updates the global mouse coordinates.
   */
 
 {
@@ -3040,21 +3035,21 @@ mesh_3d_static *make_sphere(float radius, unsigned int height_segments, unsigned
   unsigned int i,j,first_row_index;
   float angle_step;
   float scale_factor;
-  float x_coordination,y_coordination,z_coordination;
+  float x_coordinate,y_coordinate,z_coordinate;
 
   angle_step = 360.0 / (float) sides * PI_DIVIDED_180;
 
   for (j = 1; j < height_segments; j++)
     {
-      y_coordination = -1 * cos(j / (float) height_segments * PI) * radius;
+      y_coordinate = -1 * cos(j / (float) height_segments * PI) * radius;
       scale_factor = sin(j / (float) height_segments * PI);
 
       for (i = 0; i < sides; i++)
         {
-          x_coordination = sin(i * angle_step) * scale_factor;
-          z_coordination = cos(i * angle_step) * scale_factor;
+          x_coordinate = sin(i * angle_step) * scale_factor;
+          z_coordinate = cos(i * angle_step) * scale_factor;
 
-          result->add_vertex(x_coordination * radius,y_coordination,z_coordination * radius,x_coordination,z_coordination,x_coordination,y_coordination,z_coordination);
+          result->add_vertex(x_coordinate * radius,y_coordinate,z_coordinate * radius,x_coordinate,z_coordinate,x_coordinate,y_coordinate,z_coordinate);
 
           first_row_index = (j - 1) * sides + 2;
 
@@ -3497,8 +3492,8 @@ bool mesh_3d_static::load_obj(string filename)
                   vn_index >= normals.size())
                   continue;
 
-                this->vertices[indices[i]].texture_coordination[0] = texture_vertices[vt_index].x;
-                this->vertices[indices[i]].texture_coordination[1] = texture_vertices[vt_index].y;
+                this->vertices[indices[i]].texture_coordinate[0] = texture_vertices[vt_index].x;
+                this->vertices[indices[i]].texture_coordinate[1] = texture_vertices[vt_index].y;
 
                 this->vertices[indices[i]].normal.x = normals[vn_index].x;
                 this->vertices[indices[i]].normal.y = normals[vn_index].y;
@@ -3542,8 +3537,8 @@ bool mesh_3d_static::save_obj(string filename)
 
   for (i = 0; i < this->vertices.size(); i++)
     {
-      fprintf(file_handle,"vt %f %f\n",this->vertices[i].texture_coordination[0],
-        this->vertices[i].texture_coordination[1]);
+      fprintf(file_handle,"vt %f %f\n",this->vertices[i].texture_coordinate[0],
+        this->vertices[i].texture_coordinate[1]);
     }
 
   fprintf(file_handle,"\n");
@@ -3716,7 +3711,7 @@ void mesh_3d_static::texture_map_plane(axis_direction direction, float plane_wid
   unsigned int i;
   float width,height,depth;
   float x0,y0,z0,x1,y1,z1;
-  float u_coordination,v_coordination;
+  float u_coordinate,v_coordinate;
 
   this->get_bounding_box(&x0,&y0,&z0,&x1,&y1,&z1);
   width = x0 - x1;
@@ -3731,39 +3726,39 @@ void mesh_3d_static::texture_map_plane(axis_direction direction, float plane_wid
       switch (direction)
         {
           case DIRECTION_LEFT:
-            u_coordination = ((this->vertices[i].position.z - z0) / depth) * plane_width;
-            v_coordination = ((this->vertices[i].position.y - y0) / height) * plane_height;
+            u_coordinate = ((this->vertices[i].position.z - z0) / depth) * plane_width;
+            v_coordinate = ((this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_RIGHT:
-            u_coordination = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_width;
-            v_coordination = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
+            u_coordinate = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_width;
+            v_coordinate = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_FORWARD:
-            u_coordination = ((this->vertices[i].position.x - x0) / width) * plane_width;
-            v_coordination = ((this->vertices[i].position.y - y0) / height) * plane_height;
+            u_coordinate = ((this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordinate = ((this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_BACKWARD:
-            u_coordination = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
-            v_coordination = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
+            u_coordinate = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordinate = (1.0 - (this->vertices[i].position.y - y0) / height) * plane_height;
             break;
 
           case DIRECTION_UP:
-            u_coordination = ((this->vertices[i].position.x - x0) / width) * plane_width;
-            v_coordination = ((this->vertices[i].position.z - z0) / depth) * plane_height;
+            u_coordinate = ((this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordinate = ((this->vertices[i].position.z - z0) / depth) * plane_height;
             break;
 
           case DIRECTION_DOWN:
           default:
-            u_coordination = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
-            v_coordination = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_height;
+            u_coordinate = (1.0 - (this->vertices[i].position.x - x0) / width) * plane_width;
+            v_coordinate = (1.0 - (this->vertices[i].position.z - z0) / depth) * plane_height;
             break;
         }
 
-      this->vertices[i].texture_coordination[0] = u_coordination;
-      this->vertices[i].texture_coordination[1] = v_coordination;
+      this->vertices[i].texture_coordinate[0] = u_coordinate;
+      this->vertices[i].texture_coordinate[1] = v_coordinate;
     }
 
   this->update();
@@ -4027,8 +4022,8 @@ mesh_3d_static::mesh_3d_static(mesh_3d_static *copy_from): mesh_3d()
       copy_from->vertices[i].position.x,
       copy_from->vertices[i].position.y,
       copy_from->vertices[i].position.z,
-      copy_from->vertices[i].texture_coordination[0],
-      copy_from->vertices[i].texture_coordination[1],
+      copy_from->vertices[i].texture_coordinate[0],
+      copy_from->vertices[i].texture_coordinate[1],
       copy_from->vertices[i].normal.x,
       copy_from->vertices[i].normal.y,
       copy_from->vertices[i].normal.z);
@@ -4124,7 +4119,7 @@ void mesh_3d_static::update()
   glEnableVertexAttribArray(3);
 
   glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),0);                   // position
-  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 12);  // texture coordination
+  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 12);  // texture coordinate
   glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 20);  // normal
   glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d),(const GLvoid*) 32);  // texture blend ratio
 
@@ -4545,8 +4540,8 @@ void mesh_3d_static::print_data()
     cout << i << ": " << this->vertices[i].position.x << ", " <<
                          this->vertices[i].position.y << ", " <<
                          this->vertices[i].position.z << "; " <<
-                         this->vertices[i].texture_coordination[0] << ", " <<
-                         this->vertices[i].texture_coordination[1] << "; " <<
+                         this->vertices[i].texture_coordinate[0] << ", " <<
+                         this->vertices[i].texture_coordinate[1] << "; " <<
                          this->vertices[i].normal.x << "; " <<
                          this->vertices[i].normal.y << "; " <<
                          this->vertices[i].normal.z << endl;
@@ -4679,8 +4674,8 @@ void mesh_3d_static::add_vertex(float x, float y, float z, float texture_u, floa
   vertex.position.y = y;
   vertex.position.z = z;
 
-  vertex.texture_coordination[0] = texture_u;
-  vertex.texture_coordination[1] = texture_v;
+  vertex.texture_coordinate[0] = texture_u;
+  vertex.texture_coordinate[1] = texture_v;
 
   vertex.normal.x = normal_x;
   vertex.normal.y = normal_y;
@@ -4841,7 +4836,7 @@ picture_2d::picture_2d()
 
 {
   this->picture_mesh.set_render_mode(RENDER_MODE_NO_LIGHT);
-  this->picture_mesh.add_vertex(0,0,0,0,0,0,0,1);  // z coordination doesn't matter
+  this->picture_mesh.add_vertex(0,0,0,0,0,0,0,1);  // z coordinate doesn't matter
   this->picture_mesh.add_vertex(1,0,0,1,0,0,0,1);
   this->picture_mesh.add_vertex(0,1,0,0,1,0,0,1);
   this->picture_mesh.add_vertex(1,1,0,1,1,0,0,1);
@@ -4972,8 +4967,8 @@ void mesh_3d_animated::add_frame(mesh_3d_static *mesh, unsigned int length)
       vertex.normal.x = mesh->vertices[i].normal.x;
       vertex.normal.y = mesh->vertices[i].normal.y;
       vertex.normal.z = mesh->vertices[i].normal.z;
-      vertex.texture_coordination[0] = mesh->vertices[i].texture_coordination[0];
-      vertex.texture_coordination[1] = mesh->vertices[i].texture_coordination[1];
+      vertex.texture_coordinate[0] = mesh->vertices[i].texture_coordinate[0];
+      vertex.texture_coordinate[1] = mesh->vertices[i].texture_coordinate[1];
 
       frame.vertices.push_back(vertex);
     }
@@ -5376,7 +5371,7 @@ picture_2d *make_text(string text, texture_2d *font, float size, float spacing)
       character = text[i];
       dx = 1 / 256.0;
 
-      picture_mesh->add_vertex(0   + i *  (size + spacing),0,0,      character * dx,1,       0,0,1);  // z coordination doesn't matter
+      picture_mesh->add_vertex(0   + i *  (size + spacing),0,0,      character * dx,1,       0,0,1);  // z coordinate doesn't matter
       picture_mesh->add_vertex(size + i * (size + spacing),0,0,      character * dx + dx,1,  0,0,1);
       picture_mesh->add_vertex(0   + i *  (size + spacing),size,0,    character * dx,0,       0,0,1);
       picture_mesh->add_vertex(size + i * (size + spacing),size,0,    character * dx + dx,0,  0,0,1);
@@ -5532,11 +5527,11 @@ void mesh_3d_animated::draw()
 
   glBindBuffer(GL_ARRAY_BUFFER,effective_vbo);
   glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,0);                   // position
-  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 12);  // texture coordination
+  glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 12);  // texture coordinate
   glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 20);  // normal
   glVertexAttribPointer(3,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 32);  // texture blend ratio
   glVertexAttribPointer(4,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 36);  // position2
-  glVertexAttribPointer(5,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 48);  // texture coordination2
+  glVertexAttribPointer(5,2,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 48);  // texture coordinate2
   glVertexAttribPointer(6,3,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 56);  // normal2
   glVertexAttribPointer(7,1,GL_FLOAT,GL_FALSE,sizeof(vertex_3d) * 2,(const GLvoid*) 68);  // texture blend ratio2
 
